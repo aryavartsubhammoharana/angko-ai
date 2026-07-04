@@ -70,6 +70,7 @@ def get_youtube_metadata(url):
         'no_warnings': True,
         'noplaylist': True,
         'extract_flat': True,
+        'extractor_args': {'youtube': ['client=ANDROID']}
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
@@ -92,21 +93,13 @@ def get_youtube_metadata(url):
 def fetch_youtube_transcript(video_id):
     """Attempt to fetch transcript from YouTube directly."""
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        # Try to find English, Hindi, or Urdu manual/generated transcripts
-        try:
-            transcript = transcript_list.find_transcript(['en', 'hi', 'ur'])
-        except Exception:
-            # Fallback to the first available transcript
-            transcript = next(iter(transcript_list))
-            
-        data = transcript.fetch()
+        data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi', 'ur'])
         full_text = " ".join([item['text'] for item in data])
         return {
             'text': full_text,
             'segments': data,
-            'language': transcript.language,
-            'language_code': transcript.language_code,
+            'language': 'Unknown',
+            'language_code': 'Unknown',
             'source': 'YouTube Subtitles'
         }
     except Exception as e:
@@ -136,6 +129,7 @@ def transcribe_audio_fallback(url, groq_key):
         'quiet': True,
         'noplaylist': True,
         'no_warnings': True,
+        'extractor_args': {'youtube': ['client=ANDROID']}
     }
 
     ffmpeg_path, ffprobe_path = find_ffmpeg_binaries()
