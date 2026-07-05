@@ -23,45 +23,63 @@ Regardless of the language spoken in the video (e.g., Hindi), Veda AI strictly f
 ## ✨ Key Features
 
 - **3D "AI-OS" Interface**: A fully immersive frontend built with Three.js, Vanta.js (Neural Network background), and VanillaTilt for interactive 3D glassmorphic cards.
-- **Advanced Fallback AI Pipeline**: Ensures 99.9% uptime by automatically falling back to secondary and tertiary LLM engines if the primary engine hits a rate limit or fails.
-- **Smart History Tracking**: A ChatGPT-style collapsible sidebar that saves your lecture history locally so you never lose your notes.
-- **Clean Architecture**: Modular CSS and JS architecture for a lightning-fast Single Page Application (SPA) experience.
+- **Dynamic URL Routing**: Just like ChatGPT, every generated note gets a unique 5-character ID (e.g., `/home/X9F2A`). This enables seamless browser navigation (Back/Forward) and session persistence.
+- **Advanced Fallback AI Pipeline**: Ensures 99.9% uptime by automatically falling back to secondary and tertiary LLM engines (Sarvam -> Groq -> Gemini) if the primary engine fails.
+- **Auto-Whisper Transcription**: If a video lacks YouTube subtitles, Veda AI seamlessly intercepts, downloads the audio track via `yt-dlp`, and transcribes it using Groq's lightning-fast `whisper-large-v3` model.
+- **Smart History Tracking**: A collapsible sidebar that saves your lecture history locally so you never lose your notes.
+
+---
+
+## 🔒 Security & Stability
+
+- **SSRF Protection**: Strict server-side validation strips malicious inputs and reconstructs a safe canonical YouTube URL (`https://www.youtube.com/watch?v=...`) before fetching data, entirely preventing Server-Side Request Forgery.
+- **Path Traversal Guard**: Video IDs are strictly validated using RegEx (`^[a-zA-Z0-9_-]{11}$`) to prevent filesystem manipulation during audio downloads.
+- **Duration Limiter**: An ultra-fast pre-transcript metadata check strictly limits analysis to videos under **20 minutes and 20 seconds**, preventing server timeouts and abuse. It auto-resets the UI upon rejection.
+- **Robust Prompting**: Strict LLM instructional prompts prevent template bleeding (e.g., outputting literal placeholder text).
 
 ---
 
 ## 🏗️ System Architecture & Flow
 
-Veda AI utilizes a highly resilient backend architecture designed in **Python Flask**. When a video is submitted, the system attempts to process it through a cascading chain of Large Language Models to guarantee a result.
+Veda AI utilizes a highly resilient backend architecture designed in **Python Flask**. When a video is submitted, the system attempts to process it through a cascading chain of AI systems to guarantee a result.
 
 ### How it works (Flowchart)
 
 ```mermaid
 graph TD
-    A([User Inputs YouTube URL]) --> B[Flask API: /api/analyze]
-    B --> C{Extract Video ID}
+    A([User Inputs URL]) --> B[Extract & Validate 11-char Video ID]
+    B -->|Invalid| Z([Return 400 Error & Auto-Reset UI])
+    B -->|Valid| C[Construct Safe Canonical URL]
     
-    C -->|Valid ID| D[Fetch Transcript via YouTube-Transcript-API]
-    C -->|Invalid ID| Z([Return Error])
+    C --> D[Fetch oEmbed/HTML Metadata]
+    D --> E{Duration > 20m 20s?}
     
-    D -->|Success| F[Format Transcript & Generate System Prompt]
-    D -->|Fails/No CC| Y([Return Transcript Error])
+    E -->|Yes| Z
+    E -->|No| F[Attempt YouTube Transcript API]
     
-    F --> G(Primary Engine: Sarvam AI 105B)
-    G --> H{Response 200 OK?}
+    F -->|Success| I[Format Transcript text]
+    F -->|No CC / Fails| G[Download Audio via yt-dlp]
     
-    H -->|Yes| P([Return AI Markdown Notes])
-    H -->|No / Token Limit| I(Fallback 1: Groq LLaMA-3.3-70b)
+    G --> H(Groq API: Whisper-Large-v3)
+    H -->|Transcribed| I
+    H -->|Fails| Z
     
-    I --> J{Response 200 OK?}
-    J -->|Yes| P
-    J -->|No| K(Fallback 2: Google Gemini 2.5 Flash)
+    I --> J(Primary Engine: Sarvam AI 105B)
+    J --> K{Response 200 OK?}
     
-    K --> L{Response 200 OK?}
-    L -->|Yes| P
-    L -->|No All Failed| Z
+    K -->|Yes| P([Return AI Markdown Notes & 5-digit ID])
+    K -->|No| L(Fallback 1: Groq LLaMA-3.3-70b)
     
-    P --> M[Frontend Renders Markdown via Marked.js]
-    M --> N[(Save to Browser LocalStorage)]
+    L --> M{Response 200 OK?}
+    M -->|Yes| P
+    M -->|No| N(Fallback 2: Google Gemini 2.5 Flash)
+    
+    N --> O{Response 200 OK?}
+    O -->|Yes| P
+    O -->|No All Failed| Z
+    
+    P --> Q[Frontend Renders Markdown via Marked.js]
+    Q --> R[(Save to LocalStorage & pushState URL)]
 ```
 
 ### The AI Pipeline Explained:
@@ -75,7 +93,7 @@ graph TD
 
 **Frontend:**
 - HTML5, Vanilla CSS3 (Glassmorphism design)
-- JavaScript (Vanilla)
+- JavaScript (Vanilla with HTML5 History API Routing)
 - Three.js & Vanta.js (3D Animations)
 - VanillaTilt.js (Card Interactions)
 - Feather Icons & Marked.js (Markdown Rendering)
@@ -83,8 +101,8 @@ graph TD
 **Backend:**
 - Python 3.x
 - Flask (WSGI Web Framework)
-- `youtube-transcript-api`
-- `requests` & `google-genai` (API Integrations)
+- `youtube-transcript-api` & `yt-dlp`
+- `requests`, `groq`, & `google-genai` (API Integrations)
 
 ---
 
