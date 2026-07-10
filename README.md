@@ -35,6 +35,7 @@ Regardless of the language spoken in the video (e.g., Hindi), Veda AI strictly f
 - **SSRF Protection**: Strict server-side validation strips malicious inputs and reconstructs a safe canonical YouTube URL (`https://www.youtube.com/watch?v=...`) before fetching data, entirely preventing Server-Side Request Forgery.
 - **Path Traversal Guard**: Video IDs are strictly validated using RegEx (`^[a-zA-Z0-9_-]{11}$`) to prevent filesystem manipulation during audio downloads.
 - **Duration Limiter**: An ultra-fast pre-transcript metadata check strictly limits analysis to videos under **20 minutes and 20 seconds**, preventing server timeouts and abuse. It auto-resets the UI upon rejection.
+- **Safe Truncation**: To prevent token limit crashes, transcripts are securely truncated (12,000 characters for Sarvam, 24,000 for Groq) before being sent to the LLMs.
 - **Robust Prompting**: Strict LLM instructional prompts prevent template bleeding (e.g., outputting literal placeholder text).
 
 ---
@@ -52,10 +53,10 @@ graph TD
     B -->|Valid| C[Construct Safe Canonical URL]
     
     C --> D[Fetch oEmbed/HTML Metadata]
-    D --> E{Duration > 20m 20s?}
+    D --> E{Metadata Duration > 20m 20s?}
     
     E -->|Yes| Z
-    E -->|No| F[Attempt YouTube Transcript API]
+    E -->|No / Unknown| F[Attempt YouTube Transcript API]
     
     F -->|Success| I[Format Transcript text]
     F -->|No CC / Fails| G[Download Audio via yt-dlp]
@@ -64,10 +65,14 @@ graph TD
     H -->|Transcribed| I
     H -->|Fails| Z
     
-    I --> J(Primary Engine: Sarvam AI 105B)
+    I --> E2{Transcript Duration > 20m 20s?}
+    E2 -->|Yes| Z
+    E2 -->|No| I2[Safe Truncation]
+    
+    I2 --> J(Primary Engine: Sarvam AI 105B)
     J --> K{Response 200 OK?}
     
-    K -->|Yes| P([Return AI Markdown Notes & 5-digit ID])
+    K -->|Yes| P([Return AI Markdown Notes & 5-character ID])
     K -->|No| L(Fallback 1: Groq LLaMA-3.3-70b)
     
     L --> M{Response 200 OK?}
@@ -84,8 +89,8 @@ graph TD
 
 ### The AI Pipeline Explained:
 1. **Sarvam AI (Primary)**: The primary engine, highly optimized for instruction extraction and processing Indian context/languages. (Limited to 4096 tokens).
-2. **Groq (Fallback 1)**: If the video is too long or Sarvam fails, the system instantly switches to Groq using `llama-3.3-70b-versatile` for ultra-fast inference (Up to 6000 tokens).
-3. **Gemini (Fallback 2)**: The ultimate safety net. If Groq is rate-limited, Gemini kicks in to ensure the user still gets their notes.
+2. **Groq (Fallback 1)**: If the Sarvam API fails or the API key is missing, the system instantly switches to Groq using `llama-3.3-70b-versatile` for ultra-fast inference (Up to 6000 tokens).
+3. **Gemini (Fallback 2)**: The ultimate safety net. If Groq is rate-limited or fails, Gemini kicks in to ensure the user still gets their notes.
 
 ---
 
@@ -107,6 +112,13 @@ graph TD
 ---
 
 ## 🚀 Installation & Setup
+
+### Prerequisites
+- **Python 3.8+**
+- **FFmpeg**: Required for audio extraction during the Whisper transcription fallback.
+  - **Windows**: Download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) or install via `winget install ffmpeg`. Ensure it's in your system PATH or installed in common program files directories.
+  - **Mac**: `brew install ffmpeg`
+  - **Linux**: `sudo apt install ffmpeg`
 
 1. **Clone the repository:**
    ```bash

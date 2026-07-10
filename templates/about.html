@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Veda AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/about.css') }}">
+</head>
+<body>
+    <div id="vanta-bg"></div>
+    <div class="container">
+        <!-- Breadcrumbs -->
+        <div style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px; display: flex; align-items: center; gap: 8px; font-weight: 500; letter-spacing: 0.5px;">
+            <a href="/home" style="color: var(--color-primary); text-decoration: none; display: flex; align-items: center; gap: 6px;">
+                <i data-feather="home" style="width: 14px; height: 14px;"></i> Veda AI
+            </a> 
+            <span>/</span> 
+            <span style="color: var(--text-heading);">About</span>
+        </div>
+        
+        <h1><i data-feather="info"></i> About Veda AI</h1>
+        <p>Veda AI is a futuristic Video Lecture Analyzer designed to convert long, unstructured YouTube educational videos into highly structured, comprehensive teacher notes.</p>
+        <p>By leveraging advanced Large Language Models like Sarvam AI (specifically optimized for high-quality instruction extraction) and Groq LLaMA-3, it instantly provides you with point-by-point concepts, analogies, and detailed breakdowns of any lecture. The immersive 3D interface is built using Three.js and Vanta.js to provide an engaging, premium AI-OS aesthetic.</p>
+        
+        <h3 style="color: var(--text-heading); margin-bottom: 12px; margin-top: 24px; font-size: 20px;">Powered By</h3>
+        <div class="tech-stack">
+            <span class="tech-badge">Python Flask</span>
+            <span class="tech-badge">Sarvam AI (105B)</span>
+            <span class="tech-badge">Vanilla CSS & JS</span>
+            <span class="tech-badge">Three.js</span>
+            <span class="tech-badge">YouTube Transcript API</span>
+        </div>
+
+        <a href="/" class="back-link"><i data-feather="arrow-left"></i> Back to Analyzer</a>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+    <script src="{{ url_for('static', filename='js/3js_main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/about.js') }}"></script>
+</body>
+</html>
