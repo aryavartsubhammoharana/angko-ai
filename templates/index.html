@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Angkor AI - Video Lecture Analyzer</title>
+    <title>Angkor AI - Video Intelligence Engine</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/logo.png') }}">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,15 +33,15 @@
     <header class="navbar-header">
         <div class="navbar-container">
             <div class="navbar-left">
-                <button id="sidebarToggleBtn" class="icon-btn" onclick="toggleSidebar()" title="Toggle Lecture History">
+                <button id="sidebarToggleBtn" class="icon-btn" onclick="toggleSidebar()" title="Toggle History">
                     <i data-feather="sidebar"></i>
                 </button>
-                <a href="/home" class="brand-logo">
-                    <i data-feather="book-open"></i>
+                <a href="/home" class="brand-logo" title="Angkor AI">
+                    <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Angkor AI Logo" class="project-logo">
                     <span>Angkor AI</span>
                 </a>
                 <span class="nav-brand-divider"></span>
-                <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer" class="nav-brand-emblem-link" title="DLM">
+                <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer" class="nav-brand-emblem-link" title="Developed by DLM">
                     <img src="{{ url_for('static', filename='images/dlm.png') }}" alt="DLM" class="nav-brand-emblem">
                 </a>
             </div>
