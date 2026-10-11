@@ -27,7 +27,19 @@ logging.basicConfig(
 # Load environment variables once at startup
 load_dotenv()
 
-app = Flask(__name__)
+# Base directory for reliable static and template resolution on Vercel serverless
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, 'static'),
+    template_folder=os.path.join(BASE_DIR, 'templates')
+)
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(BASE_DIR, 'static'), filename)
 
 # Security: Set secret key and maximum request body size (64 KB)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32).hex()
