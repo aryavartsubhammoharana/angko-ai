@@ -1047,6 +1047,27 @@ main {
     margin: 2em 0;
 }
 
+/* KaTeX / LaTeX Formulas - Clean B&W Styling */
+.markdown-body .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 12px 16px;
+    margin: 1.2em 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    text-align: center;
+}
+.markdown-body .katex {
+    font-size: 1.05em;
+    color: #ffffff;
+}
+.markdown-body .katex .mord, 
+.markdown-body .katex .mbin, 
+.markdown-body .katex .mrel {
+    color: inherit;
+}
+
 /* ==========================================================================
    Toast Notifications
    ========================================================================== */

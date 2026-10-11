@@ -14,6 +14,10 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- DOMPurify HTML Sanitizer -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <!-- KaTeX Math & LaTeX Renderer -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
@@ -420,6 +424,36 @@
             return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
         }
 
+        // Render LaTeX equations in a DOM element via KaTeX
+        function renderLatexInElement(element) {
+            if (!element) return;
+            const tryRender = () => {
+                if (typeof renderMathInElement === 'function') {
+                    try {
+                        renderMathInElement(element, {
+                            delimiters: [
+                                { left: '$$', right: '$$', display: true },
+                                { left: '$', right: '$', display: false },
+                                { left: '\\(', right: '\\)', display: false },
+                                { left: '\\[', right: '\\]', display: true }
+                            ],
+                            throwOnError: false,
+                            errorColor: '#cc0000'
+                        });
+                    } catch (e) {
+                        console.warn("KaTeX render error:", e);
+                    }
+                }
+            };
+
+            if (typeof renderMathInElement === 'function') {
+                tryRender();
+            } else {
+                // If defer scripts are still loading, wait slightly
+                setTimeout(tryRender, 200);
+            }
+        }
+
         // Render response data into results UI
         function renderAnalysisResults(data) {
             activeAnalysis = data;
@@ -438,6 +472,9 @@
             const mdContainer = document.getElementById('notesMarkdown');
             const rawMarkdown = marked.parse(data.analysis || '');
             mdContainer.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(rawMarkdown) : rawMarkdown;
+
+            // Render LaTeX / Math via KaTeX auto-render
+            renderLatexInElement(mdContainer);
 
             // Render Transcript list
             const transcriptContainer = document.getElementById('transcriptScroller');

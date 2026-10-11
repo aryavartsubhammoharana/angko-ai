@@ -49,8 +49,8 @@ def set_security_headers(response):
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+        "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
         "img-src 'self' data: https://i.ytimg.com https://*.ytimg.com https://images.unsplash.com; "
         "connect-src 'self'; "
         "frame-ancestors 'none';"
@@ -391,6 +391,7 @@ def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-10
     prompt = f"""
     Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
     IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
+    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
 
     Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
 
@@ -433,6 +434,7 @@ def analyze_transcript_groq(transcript_text, groq_key, model_name="llama-3.3-70b
     prompt = f"""
     Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
     IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
+    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
 
     Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
 
@@ -471,6 +473,7 @@ def analyze_transcript_gemini(transcript_text, gemini_key):
     prompt = f"""
     Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
     IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
+    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
 
     Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
 
@@ -522,6 +525,7 @@ def analyze_transcript_nvidia(transcript_text, nvidia_key, model_name="nvidia/ne
     prompt = f"""
     Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
     IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
+    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
 
     Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
 
