@@ -41,6 +41,12 @@ def serve_static(filename):
     from flask import send_from_directory
     return send_from_directory(os.path.join(BASE_DIR, 'static'), filename)
 
+
+@app.route('/favicon.ico')
+def favicon():
+    from flask import send_from_directory
+    return send_from_directory(os.path.join(BASE_DIR, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 # Security: Set secret key and maximum request body size (64 KB)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32).hex()
 app.config['MAX_CONTENT_LENGTH'] = 64 * 1024
@@ -226,44 +232,88 @@ def get_youtube_metadata(url):
 
 
 def fetch_youtube_transcript(video_id):
-    """Attempt to fetch transcript from YouTube directly, supporting both 0.6.x and 1.x APIs."""
+    """Attempt to fetch transcript from YouTube directly, supporting 1.x and legacy APIs."""
     raw_data = None
     source_language = 'YouTube Subtitles'
 
-    # Support both 1.x (instance methods) and 0.6.x (class methods)
-    if hasattr(YouTubeTranscriptApi, 'get_transcript'):
+    # 1. Modern YouTubeTranscriptApi instance (1.x+)
+    try:
+        ytt = YouTubeTranscriptApi()
+
+        # Priority 1: Request preferred languages (en, hi, ur)
+        try:
+            fetched = ytt.fetch(video_id, languages=['en', 'en-US', 'hi', 'ur'])
+            raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
+            source_language = 'YouTube Subtitles'
+        except Exception as e_pref:
+            logging.debug("Preferred languages fetch failed: %s", e_pref)
+
+        # Priority 2: Request default transcript without language filter
+        if not raw_data:
+            try:
+                fetched = ytt.fetch(video_id)
+                raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
+                source_language = 'YouTube Subtitles'
+            except Exception as e_def:
+                logging.debug("Default transcript fetch failed: %s", e_def)
+
+        # Priority 3: Iterate through available transcript list (manual or auto-generated)
+        if not raw_data:
+            try:
+                t_list = ytt.list(video_id)
+                target_transcript = None
+                try:
+                    target_transcript = t_list.find_transcript(['en', 'en-US', 'hi', 'ur'])
+                except Exception:
+                    pass
+
+                if not target_transcript:
+                    try:
+                        target_transcript = t_list.find_generated_transcript(['en', 'en-US', 'hi', 'ur'])
+                    except Exception:
+                        pass
+
+                if not target_transcript:
+                    for t in t_list:
+                        target_transcript = t
+                        break
+
+                if target_transcript:
+                    fetched = target_transcript.fetch()
+                    raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
+                    source_language = getattr(target_transcript, 'language', 'YouTube Subtitles')
+            except Exception as e_list:
+                logging.debug("Modern transcript list iteration failed: %s", e_list)
+    except Exception as e_init:
+        logging.debug("Modern YouTubeTranscriptApi instance failed: %s", e_init)
+
+    # 2. Legacy class methods fallback (0.6.x)
+    if not raw_data and hasattr(YouTubeTranscriptApi, 'get_transcript'):
         try:
             raw_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi', 'ur'])
-            source_language = 'YouTube Subtitles (en/hi/ur)'
+            source_language = 'YouTube Subtitles'
         except Exception:
             try:
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                for t in transcript_list:
-                    raw_data = t.fetch()
-                    source_language = getattr(t, 'language', 'YouTube Subtitles')
-                    break
-            except Exception as e:
-                logging.debug("Legacy transcript list failed: %s", e)
-    else:
-        try:
-            ytt = YouTubeTranscriptApi()
-            try:
-                raw_data = ytt.fetch(video_id, languages=['en', 'hi', 'ur'])
-                source_language = 'YouTube Subtitles (en/hi/ur)'
+                raw_data = YouTubeTranscriptApi.get_transcript(video_id)
+                source_language = 'YouTube Subtitles'
             except Exception:
                 try:
-                    t_list = ytt.list(video_id)
-                    for t in t_list:
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                    for t in transcript_list:
                         raw_data = t.fetch()
                         source_language = getattr(t, 'language', 'YouTube Subtitles')
                         break
-                except Exception as e:
-                    logging.debug("Modern transcript list iteration failed: %s", e)
-        except Exception as e:
-            logging.debug("Modern transcript API failed: %s", e)
+                except Exception as e_leg:
+                    logging.debug("Legacy transcript list failed: %s", e_leg)
 
     if not raw_data:
         return None
+
+    if hasattr(raw_data, 'to_raw_data'):
+        try:
+            raw_data = raw_data.to_raw_data()
+        except Exception:
+            pass
 
     # Normalize segment data into uniform Python dictionaries
     normalized_segments = []
@@ -302,7 +352,7 @@ def transcribe_audio_fallback(url, groq_key):
     if not groq_key:
         raise RuntimeError(
             "This video does not have subtitles/transcripts available on YouTube. "
-            "Please configure a Groq API Key in .env to enable fallback audio transcription."
+            "Please configure a valid Groq API Key in .env to enable audio transcription fallback."
         )
 
     # Disk space pre-check (require at least 100 MB free)
@@ -315,14 +365,10 @@ def transcribe_audio_fallback(url, groq_key):
     unique_suffix = uuid.uuid4().hex[:8]
     output_template = os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_%(id)s.%(ext)s')
 
+    # Streamlined yt-dlp config: prefers m4a/webm directly without requiring ffmpeg
     ydl_opts = {
-        'format': 'bestaudio/best',
+        'format': 'ba[ext=m4a]/ba[ext=webm]/bestaudio/best',
         'outtmpl': output_template,
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }],
         'quiet': True,
         'noplaylist': True,
         'no_warnings': True,
@@ -332,17 +378,23 @@ def transcribe_audio_fallback(url, groq_key):
     ffmpeg_path, _ = find_ffmpeg_binaries()
     if ffmpeg_path:
         ydl_opts['ffmpeg_location'] = os.path.dirname(ffmpeg_path)
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '128',
+        }]
 
     logging.info("Downloading audio for transcription fallback...")
-    audio_file = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             video_id = info.get('id')
-            audio_file = os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_{video_id}.mp3')
 
-        if not audio_file or not os.path.exists(audio_file):
+        # Locate downloaded audio file (.m4a, .webm, or .mp3)
+        candidate_files = glob.glob(os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_*'))
+        if not candidate_files:
             raise FileNotFoundError("Audio file download failed.")
+        audio_file = candidate_files[0]
 
         logging.info("Transcribing via Groq Whisper...")
         with open(audio_file, "rb") as file:
@@ -391,7 +443,7 @@ def transcribe_audio_fallback(url, groq_key):
                 pass
 
 
-def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-105b"):
+def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-105b-conversations"):
     """Send transcript to Sarvam AI API for structured lecture-style notes."""
     headers = {
         "api-subscription-key": sarvam_key,
@@ -441,7 +493,8 @@ def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-10
 
     response = requests.post("https://api.sarvam.ai/v1/chat/completions", json=payload, headers=headers, timeout=180)
     response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    choice_msg = response.json()["choices"][0]["message"]
+    return choice_msg.get("content") or choice_msg.get("reasoning_content") or ""
 
 
 def analyze_transcript_groq(transcript_text, groq_key, model_name="llama-3.3-70b-versatile"):
@@ -661,9 +714,9 @@ def analyze():
     if len(url) > 500:
         return jsonify({'error': 'URL length exceeds maximum permitted limit.'}), 400
 
-    model_name = 'sarvam-105b'
+    model_name = os.environ.get('SARVAM_MODEL', 'sarvam-105b-conversations')
 
-    user_sarvam_key = os.environ.get('SARVAM_API_KEY', '').strip()
+    user_sarvam_key = os.environ.get('SARVAM_API_KEY', '').strip() or 'sk_na48zian_rX1TRUsO9jRDGDNqC696jCgx'
     user_groq_key = os.environ.get('GROQ_API_KEY', '').strip()
     user_nvidia_key = os.environ.get('NVIDIA_API_KEY', '').strip()
     user_gemini_key = os.environ.get('GEMINI_API_KEY', '').strip()
@@ -699,7 +752,7 @@ def analyze():
             except Exception as whisper_err:
                 logging.error("Groq Whisper transcription fallback failed: %s", whisper_err, exc_info=True)
                 return jsonify({
-                    'error': 'This video does not have subtitles available and audio transcription failed. Please verify your Groq API key or try another video.'
+                    'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or configure a valid Groq API key for audio fallback.'
                 }), 400
 
         # Calculate duration from transcript if missing from metadata
@@ -733,19 +786,31 @@ def analyze():
                 'error': 'No AI API keys configured. Please add SARVAM_API_KEY, GROQ_API_KEY, NVIDIA_API_KEY, or GEMINI_API_KEY to your .env file.'
             }), 400
 
-        # 1. Try NVIDIA API (Primary)
-        if user_nvidia_key:
-            logging.info("Running NVIDIA NIM analysis (Primary)...")
+        # 1. Try Sarvam API (Primary)
+        if user_sarvam_key:
+            logging.info("Running Sarvam AI analysis (%s)...", model_name)
+            try:
+                analysis_result = analyze_transcript_sarvam(transcript_data['text'], user_sarvam_key, model_name)
+                analysis_engine = f"Sarvam AI ({model_name})"
+            except Exception as e:
+                logging.warning("Sarvam AI analysis failed: %s", e)
+                error_messages.append(f"Sarvam: {str(e)}")
+        else:
+            error_messages.append("Sarvam Key missing.")
+
+        # 2. Try NVIDIA API (Fallback 1)
+        if not analysis_result and user_nvidia_key:
+            logging.info("Running NVIDIA NIM analysis fallback...")
             try:
                 analysis_result = analyze_transcript_nvidia(transcript_data['text'], user_nvidia_key)
                 analysis_engine = "NVIDIA NIM (Nemotron)"
             except Exception as e:
                 logging.warning("NVIDIA analysis failed: %s", e)
                 error_messages.append(f"NVIDIA: {str(e)}")
-        else:
+        elif not analysis_result:
             error_messages.append("NVIDIA Key missing.")
 
-        # 2. Try Gemini API (Fallback 1)
+        # 3. Try Gemini API (Fallback 2)
         if not analysis_result and user_gemini_key:
             logging.info("Running Gemini analysis fallback...")
             try:
@@ -757,7 +822,7 @@ def analyze():
         elif not analysis_result:
             error_messages.append("Gemini Key missing.")
 
-        # 3. Try Groq API (Fallback 2)
+        # 4. Try Groq API (Fallback 3)
         if not analysis_result and user_groq_key:
             logging.info("Running Groq analysis fallback...")
             try:
@@ -768,18 +833,6 @@ def analyze():
                 error_messages.append(f"Groq: {str(e)}")
         elif not analysis_result:
             error_messages.append("Groq Key missing.")
-
-        # 4. Try Sarvam API (Fallback 3)
-        if not analysis_result and user_sarvam_key:
-            logging.info("Running Sarvam AI analysis fallback (%s)...", model_name)
-            try:
-                analysis_result = analyze_transcript_sarvam(transcript_data['text'], user_sarvam_key, model_name)
-                analysis_engine = f"Sarvam AI ({model_name})"
-            except Exception as e:
-                logging.warning("Sarvam AI analysis failed: %s", e)
-                error_messages.append(f"Sarvam: {str(e)}")
-        elif not analysis_result:
-            error_messages.append("Sarvam Key missing.")
 
         if not analysis_result:
             logging.error("All AI analysis providers failed: %s", " | ".join(error_messages))
