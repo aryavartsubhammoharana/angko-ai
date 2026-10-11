@@ -7,106 +7,118 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Feather Icons -->
     <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
     <!-- Marked.js Markdown Parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- DOMPurify HTML Sanitizer -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
-    <div id="vanta-bg"></div>
-    <div class="app-container">
-        <!-- Sidebar: Video Lecture History -->
-        <aside>
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div class="brand">
+    <div class="bg-grid"></div>
+    <div class="bg-ambient-glow"></div>
+
+    <!-- Header Navbar (MetaCleaner Style) -->
+    <header class="navbar-header">
+        <div class="navbar-container">
+            <div class="navbar-left">
+                <button id="sidebarToggleBtn" class="icon-btn" onclick="toggleSidebar()" title="Toggle Lecture History">
+                    <i data-feather="sidebar"></i>
+                </button>
+                <a href="/home" class="brand-logo">
                     <i data-feather="book-open"></i>
                     <span>Veda AI</span>
+                </a>
+                <span class="nav-brand-divider"></span>
+                <span class="nav-route-badge">Lecture Notes</span>
+            </div>
+
+            <!-- Navbar Search (Visible when results are active) -->
+            <div id="topNavSearch" class="navbar-search" style="display: none;">
+                <form onsubmit="handleFormSubmit(event)" class="navbar-search-form">
+                    <div class="input-group">
+                        <i data-feather="youtube"></i>
+                        <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here..." required>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i data-feather="zap"></i>
+                            <span>Analyze</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="navbar-right">
+                <nav class="nav-links">
+                    <a href="/home" class="nav-link active">Home</a>
+                    <a href="/about" class="nav-link">About</a>
+                </nav>
+                <div class="nav-actions">
+                    <a href="https://github.com/aryavartsubhammoharana/veda-ai" target="_blank" rel="noopener noreferrer" class="github-btn" title="GitHub Repository">
+                        <i data-feather="github"></i>
+                    </a>
+                    <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer" class="dlm-badge" title="Developed by DLM">
+                        <span class="dlm-pill">DLM</span>
+                    </a>
                 </div>
-                <button class="icon-btn" onclick="toggleSidebar()" title="Close sidebar">
-                    <i data-feather="sidebar" style="width: 18px; height: 18px;"></i>
+            </div>
+        </div>
+    </header>
+
+    <div class="app-container">
+        <!-- Sidebar: Video Lecture History -->
+        <aside id="sidebarDrawer">
+            <div class="sidebar-header">
+                <div class="sidebar-title">
+                    <i data-feather="clock"></i>
+                    <span>Lecture History</span>
+                </div>
+                <button class="icon-btn" onclick="startNewLecture()" title="New Lecture" style="padding: 4px 8px; font-size: 11px; gap: 4px;">
+                    <i data-feather="plus"></i>
+                    <span>New</span>
                 </button>
             </div>
             
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 14px; overflow: hidden; min-height: 0;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: -4px;">
-                    <div class="sidebar-title" style="margin-bottom: 0;">
-                        <i data-feather="clock" style="width: 14px; height: 14px;"></i>
-                        <span>Lecture History</span>
-                    </div>
-                    <button class="icon-btn" onclick="startNewLecture()" title="New Lecture" style="padding: 6px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); color: var(--color-primary); border-radius: 8px;">
-                        <i data-feather="plus" style="width: 16px; height: 16px;"></i>
-                    </button>
-                </div>
-                
-                <div class="history-list" id="historyList">
-                    <!-- Loaded dynamically via JavaScript -->
-                    <div class="empty-history">No lecture history found. Run an analysis to see notes here.</div>
-                </div>
-            </div>
-            
-            <!-- Sidebar Footer Links -->
-            <div style="margin-top: auto; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: center; gap: 16px;">
-                <a href="/about" title="About" class="icon-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; padding: 0;">
-                    <i data-feather="info" style="width: 18px; height: 18px;"></i>
-                </a>
-                <a href="https://github.com/aryavartsubhammoharana/veda-ai" target="_blank" title="GitHub" class="icon-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; padding: 0;">
-                    <i data-feather="github" style="width: 18px; height: 18px;"></i>
-                </a>
+            <div class="history-list" id="historyList">
+                <div class="empty-history">No lecture history found. Run an analysis to see notes here.</div>
             </div>
         </aside>
 
         <!-- Main Workspace -->
         <main>
-            <button id="openSidebarBtn" class="icon-btn" onclick="toggleSidebar()" title="Open sidebar" style="display: none; position: absolute; top: 24px; left: 24px; z-index: 100; background: var(--bg-card); border: 1px solid rgba(255,255,255,0.1); padding: 8px;">
-                <i data-feather="sidebar"></i>
-            </button>
-            
-            <!-- Top Navigation / Search Area -->
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 32px; margin-top: -24px; margin-bottom: -10px; flex-wrap: wrap;">
-                <!-- Breadcrumbs -->
-                <div style="font-size: 15px; color: var(--text-muted); display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap;">
-                    <a href="/home" style="color: var(--color-primary); text-decoration: none; display: flex; align-items: center; gap: 6px;">
-                        <i data-feather="home" style="width: 16px; height: 16px;"></i> Veda AI
-                    </a> 
-                    <span>/</span> 
-                    <span style="color: var(--text-heading);">Home</span>
+            <!-- Hero Empty State (MetaCleaner Workspace Style) -->
+            <div id="heroSearch" class="workspace-hero">
+                <div class="workspace-header">
+                    <div class="status-meta-pill">
+                        <span class="status-indicator-dot active"></span>
+                        <span>AI Lecture Notes Engine</span>
+                    </div>
+                    <h1>Analyze Lecture</h1>
+                    <p>Transform YouTube educational videos into structured, comprehensive teacher notes.</p>
                 </div>
 
-                <!-- Search / Input box card (Top Nav, Hidden by default) -->
-                <section id="topNavSearch" class="analyzer-input-card" style="flex: 1; min-width: 400px; padding: 12px 16px; margin: 0; display: none;">
-                    <form onsubmit="handleFormSubmit(event)" style="margin: 0;">
-                        <div class="input-group">
-                            <i data-feather="youtube"></i>
-                            <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here..." required style="padding: 12px 12px 12px 48px;">
-                            <button type="submit" class="btn btn-primary" style="padding: 10px 20px;">
-                                <i data-feather="zap" style="width: 18px; height: 18px;"></i>
-                                <span>Analyze Video</span>
-                            </button>
-                        </div>
-                    </form>
-                </section>
-            </div>
-
-            <!-- Hero Empty State (Centered Search Box) -->
-            <div id="heroSearch" style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; min-height: 60vh; animation: fadeIn 0.5s ease;">
-                <div style="text-align: center;">
-                    <h1 style="font-size: 38px; font-weight: 800; margin-bottom: 12px; background: linear-gradient(135deg, #ffffff 0%, var(--color-primary) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">What do you want to learn today?</h1>
-                    <p style="color: var(--text-muted); font-size: 16px;">Paste a YouTube lecture link to instantly generate AI teacher notes.</p>
-                </div>
-                <section class="analyzer-input-card" style="width: 100%; max-width: 700px; padding: 24px;">
+                <div class="search-box-card">
                     <form onsubmit="handleFormSubmit(event)">
                         <div class="input-group">
                             <i data-feather="youtube"></i>
-                            <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here... (e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ)" required>
-                            <button type="submit" class="btn btn-primary" style="padding: 12px 24px; font-size: 15px;">
+                            <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here... (e.g. https://www.youtube.com/watch?v=...)" required autofocus>
+                            <button type="submit" class="btn btn-primary" id="heroSubmitBtn">
                                 <i data-feather="zap"></i>
                                 <span>Analyze Video</span>
                             </button>
                         </div>
                     </form>
-                </section>
+                </div>
+
+                <div class="format-pills">
+                    <span class="format-pill">YOUTUBE</span>
+                    <span class="format-pill">AUTO-TRANSCRIPT</span>
+                    <span class="format-pill">NVIDIA NIM</span>
+                    <span class="format-pill">GROQ</span>
+                    <span class="format-pill">TEACHER NOTES</span>
+                    <span class="format-pill">KEY TAKEAWAYS</span>
+                </div>
             </div>
 
             <!-- Loading Progress Stepper -->
@@ -122,15 +134,15 @@
                     </div>
                     <div class="step" id="step3">
                         <div class="step-circle">3</div>
-                        <div class="step-label">Sarvam AI Analysis</div>
+                        <div class="step-label">AI Notes Generation</div>
                     </div>
                     <div class="step" id="step4">
                         <div class="step-circle">4</div>
                         <div class="step-label">Formatting Output</div>
                     </div>
                 </div>
-                <div style="color: var(--text-muted); font-size: 14px; margin-top: 8px; display: flex; align-items: center; gap: 8px;">
-                    <i data-feather="loader" class="spin" style="width: 16px; height: 16px; stroke: var(--color-primary);"></i>
+                <div class="loading-sub">
+                    <i data-feather="loader" class="spin"></i>
                     <span id="loadingMessage">Processing video metadata...</span>
                 </div>
             </section>
@@ -148,7 +160,7 @@
                         <div class="video-details">
                             <h4 class="video-title" id="videoTitle">Video Title Loading...</h4>
                             <div class="video-author">
-                                <i data-feather="user" style="width: 14px; height: 14px;"></i>
+                                <i data-feather="user"></i>
                                 <span id="videoAuthor">Creator</span>
                             </div>
                         </div>
@@ -157,10 +169,7 @@
                     <!-- Searchable transcript viewer -->
                     <div class="transcript-card">
                         <div class="transcript-header">
-                            <div class="sidebar-title" style="margin-bottom: 0;">
-                                <i data-feather="align-left" style="width: 14px; height: 14px;"></i>
-                                <span>Interactive Transcript</span>
-                            </div>
+                            <h3>Interactive Transcript</h3>
                         </div>
                         <div class="transcript-search-wrapper">
                             <i data-feather="search"></i>
@@ -175,21 +184,17 @@
                 <!-- Right Column: AI Generated notebook -->
                 <div class="notes-card">
                     <div class="notes-header">
-                        <div class="sidebar-title" style="margin-bottom: 0;">
-                            <i data-feather="file-text" style="width: 14px; height: 14px;"></i>
-                            <span>AI Teacher Notes</span>
+                        <div class="notes-engine-tag" id="engineTag">
+                            <i data-feather="cpu"></i>
+                            <span id="engineLabel">NVIDIA NIM</span>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div class="notes-engine-tag" id="engineTag">
-                                <i data-feather="cpu"></i>
-                                <span id="engineLabel">Sarvam AI</span>
-                            </div>
-                            <button class="btn" style="padding: 6px 12px; font-size: 12.5px;" onclick="copyToClipboard()">
-                                <i data-feather="copy" style="width: 14px; height: 14px;"></i>
+                        <div class="notes-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard()">
+                                <i data-feather="copy"></i>
                                 <span>Copy</span>
                             </button>
-                            <button class="btn" style="padding: 6px 12px; font-size: 12.5px;" onclick="downloadMarkdown()">
-                                <i data-feather="download" style="width: 14px; height: 14px;"></i>
+                            <button class="btn btn-secondary btn-sm" onclick="downloadMarkdown()">
+                                <i data-feather="download"></i>
                                 <span>Download</span>
                             </button>
                         </div>
@@ -203,6 +208,11 @@
         </main>
     </div>
 
+    <!-- Footer Bar (MetaCleaner style) -->
+    <footer class="footer-bar">
+        <p>Developed by <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer">DLM</a> &bull; Veda AI</p>
+    </footer>
+
 
 
     <!-- Notification Toast -->
@@ -215,7 +225,7 @@
         // Global State & History Storage
         let configData = {};
         let activeAnalysis = null;
-        let history = [];
+        let lectureHistory = [];
 
         // App Initialisation
         window.addEventListener('DOMContentLoaded', () => {
@@ -236,7 +246,7 @@
             if (parts.length >= 3 && parts[1] === 'home') {
                 const lectureId = parts[2];
                 if (lectureId && lectureId !== 'new') {
-                    const foundItem = history.find(item => item.lecture_id === lectureId);
+                    const foundItem = lectureHistory.find(item => item.lecture_id === lectureId);
                     if (foundItem) {
                         loadHistoryItem(foundItem, false);
                     } else {
@@ -307,9 +317,11 @@
             // Form validations
             if (!url) return;
 
+            const wasHeroSearchVisible = (heroSearch.style.display !== 'none');
+
             // Update UI State: Hide hero, show top nav search
             heroSearch.style.display = 'none';
-            topNavSearch.style.display = 'block';
+            topNavSearch.style.display = 'flex';
             
             // Sync URL to top nav if submitted from hero
             if (urlInput !== topNavSearch.querySelector('[name="youtubeUrl"]')) {
@@ -323,10 +335,12 @@
             
             updateStepperProgress(1, "Validating YouTube URL & getting video metadata...");
 
+            let progressInterval = null;
+
             try {
                 // Step 1: Request Analysis from Flask
                 // We'll dynamically trigger the progress messages based on estimated completion times
-                let progressInterval = setInterval(() => {
+                progressInterval = setInterval(() => {
                     const currentStep = document.querySelector('.step.active');
                     if (!currentStep) return;
                     
@@ -334,7 +348,7 @@
                     if (stepId === 'step1') {
                         updateStepperProgress(2, "URL is valid. Fetching lecture subtitles/transcripts...");
                     } else if (stepId === 'step2') {
-                        updateStepperProgress(3, "Subtitles acquired. Analyzing lecture transcript with Sarvam AI... This may take up to 30s.");
+                        updateStepperProgress(3, "Subtitles acquired. Analyzing lecture transcript with AI... This may take up to 30s.");
                     }
                 }, 4000);
 
@@ -346,7 +360,11 @@
                     })
                 });
 
-                clearInterval(progressInterval);
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
+
                 const data = await response.json();
 
                 if (!response.ok) {
@@ -365,12 +383,23 @@
 
             } catch (err) {
                 console.error(err);
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
                 loaderContainer.style.display = 'none';
                 submitBtn.disabled = false;
+
+                // Restore hero search if no results are visible
+                if (!activeAnalysis && wasHeroSearchVisible) {
+                    heroSearch.style.display = 'flex';
+                    topNavSearch.style.display = 'none';
+                }
+
                 showToast(err.message || "Failed to analyze video. Connection error.", "error");
                 
                 // Automatically refresh/reset the page if the video was refused
-                if (err.message.includes("too long")) {
+                if (err.message && err.message.includes("too long")) {
                     setTimeout(() => {
                         startNewLecture();
                     }, 3500);
@@ -405,9 +434,10 @@
             // Render Engine Name Tag
             document.getElementById('engineLabel').textContent = data.engine || 'Sarvam AI';
 
-            // Render AI Markdown
+            // Render AI Markdown (Sanitized against XSS)
             const mdContainer = document.getElementById('notesMarkdown');
-            mdContainer.innerHTML = marked.parse(data.analysis);
+            const rawMarkdown = marked.parse(data.analysis || '');
+            mdContainer.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(rawMarkdown) : rawMarkdown;
 
             // Render Transcript list
             const transcriptContainer = document.getElementById('transcriptScroller');
@@ -490,28 +520,49 @@
             document.body.removeChild(element);
         }
 
+        // Cryptographically secure lecture ID generator
+        function generateLectureId() {
+            try {
+                const bytes = new Uint8Array(4);
+                window.crypto.getRandomValues(bytes);
+                return Array.from(bytes, b => b.toString(36).padStart(2, '0')).join('').substring(0, 5).toUpperCase();
+            } catch (e) {
+                return (Date.now().toString(36) + Math.random().toString(36).substring(2, 5)).substring(0, 5).toUpperCase();
+            }
+        }
+
         // --- Persistent Local History Controls ---
         function saveToLocalStorageHistory(data) {
             try {
-                // Generate a 5-character alphanumeric ID if it doesn't exist
                 if (!data.lecture_id) {
-                    data.lecture_id = Math.random().toString(36).substring(2, 7).toUpperCase();
+                    data.lecture_id = generateLectureId();
                 }
 
                 // Push new URL state
                 window.history.pushState({}, '', '/home/' + data.lecture_id);
 
                 // Ensure duplicate entries are removed
-                history = history.filter(item => item.metadata.video_id !== data.metadata.video_id);
+                lectureHistory = lectureHistory.filter(item => item.metadata.video_id !== data.metadata.video_id);
                 // Prepend new item
-                history.unshift(data);
+                lectureHistory.unshift(data);
                 
                 // Limit history to 20 items to prevent storage overflow
-                if (history.length > 20) {
-                    history.pop();
+                if (lectureHistory.length > 20) {
+                    lectureHistory.pop();
                 }
                 
-                localStorage.setItem('veda_lecture_history', JSON.stringify(history));
+                try {
+                    localStorage.setItem('veda_lecture_history', JSON.stringify(lectureHistory));
+                } catch (quotaErr) {
+                    // Quota exceeded: trim older items and retry
+                    while (lectureHistory.length > 2) {
+                        lectureHistory.pop();
+                        try {
+                            localStorage.setItem('veda_lecture_history', JSON.stringify(lectureHistory));
+                            break;
+                        } catch (e) {}
+                    }
+                }
                 renderHistoryUI();
             } catch (err) {
                 console.error("Local storage error:", err);
@@ -522,7 +573,7 @@
             const cached = localStorage.getItem('veda_lecture_history');
             if (cached) {
                 try {
-                    history = JSON.parse(cached);
+                    lectureHistory = JSON.parse(cached);
                     renderHistoryUI();
                 } catch (err) {
                     console.error("Failed to parse cached history:", err);
@@ -534,12 +585,12 @@
             const container = document.getElementById('historyList');
             container.innerHTML = '';
 
-            if (history.length === 0) {
+            if (lectureHistory.length === 0) {
                 container.innerHTML = `<div class="empty-history">No lecture history found. Run an analysis to see notes here.</div>`;
                 return;
             }
 
-            history.forEach(item => {
+            lectureHistory.forEach(item => {
                 const card = document.createElement('div');
                 card.className = 'history-item';
                 if (activeAnalysis && activeAnalysis.metadata.video_id === item.metadata.video_id) {
@@ -547,7 +598,6 @@
                 }
 
                 card.onclick = (e) => {
-                    // Prevent trigger if they click delete button
                     if (e.target.closest('.delete-btn')) return;
                     loadHistoryItem(item);
                 };
@@ -588,7 +638,7 @@
                 window.history.pushState({}, '', '/home/' + (item.lecture_id || ''));
             }
             document.getElementById('heroSearch').style.display = 'none';
-            document.getElementById('topNavSearch').style.display = 'block';
+            document.getElementById('topNavSearch').style.display = 'flex';
             document.querySelector('#topNavSearch [name="youtubeUrl"]').value = item.metadata.url || '';
             
             renderAnalysisResults(item);
@@ -598,7 +648,6 @@
                 card.classList.remove('active');
             });
             
-            // Add active to matching item
             renderHistoryUI();
             
             document.getElementById('resultsContainer').style.display = 'grid';
@@ -607,38 +656,29 @@
 
         function deleteHistoryItem(videoId, e) {
             e.stopPropagation();
-            history = history.filter(item => item.metadata.video_id !== videoId);
-            localStorage.setItem('veda_lecture_history', JSON.stringify(history));
+            lectureHistory = lectureHistory.filter(item => item.metadata.video_id !== videoId);
+            try {
+                localStorage.setItem('veda_lecture_history', JSON.stringify(lectureHistory));
+            } catch (err) {}
             
             if (activeAnalysis && activeAnalysis.metadata.video_id === videoId) {
-                activeAnalysis = null;
-                document.getElementById('resultsContainer').style.display = 'none';
+                startNewLecture();
+            } else {
+                renderHistoryUI();
             }
-            
-            renderHistoryUI();
             showToast("Lecture removed from history.", "info");
         }
 
         // Sidebar Toggle Logic
         function toggleSidebar() {
             const container = document.querySelector('.app-container');
-            const openBtn = document.getElementById('openSidebarBtn');
-            
-            if (container.classList.contains('collapsed-sidebar')) {
-                container.classList.remove('collapsed-sidebar');
-                openBtn.style.display = 'none';
-                localStorage.setItem('veda_sidebar_collapsed', 'false');
-            } else {
-                container.classList.add('collapsed-sidebar');
-                openBtn.style.display = 'block';
-                localStorage.setItem('veda_sidebar_collapsed', 'true');
-            }
+            const isCollapsed = container.classList.toggle('collapsed-sidebar');
+            localStorage.setItem('veda_sidebar_collapsed', isCollapsed ? 'true' : 'false');
         }
 
         // Initialize sidebar state on load
         if (localStorage.getItem('veda_sidebar_collapsed') === 'true') {
             document.querySelector('.app-container').classList.add('collapsed-sidebar');
-            document.getElementById('openSidebarBtn').style.display = 'block';
         }
 
         // Reset workspace for a new lecture
@@ -666,12 +706,5 @@
             document.querySelector('#heroSearch [name="youtubeUrl"]').focus();
         }
     </script>
-    
-    <!-- 3D Frontend Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.8.0/vanilla-tilt.min.js"></script>
-    
-    <script src="{{ url_for('static', filename='js/3js_main.js') }}"></script>
 </body>
 </html>

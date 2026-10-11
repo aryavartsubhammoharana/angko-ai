@@ -1,0 +1,19 @@
+# Environment & Secret keys
+.env
+.env.local
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Temporary media files
+*.mp3
+*.webm
+*.m4a
+*.part

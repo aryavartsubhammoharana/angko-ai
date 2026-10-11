@@ -22,9 +22,9 @@ Regardless of the language spoken in the video (e.g., Hindi), Veda AI strictly f
 
 ## ✨ Key Features
 
-- **3D "AI-OS" Interface**: A fully immersive frontend built with Three.js, Vanta.js (Neural Network background), and VanillaTilt for interactive 3D glassmorphic cards.
+- **Clean 2D Monochrome Interface**: A modern, high-contrast Black & White UI inspired by BTechX with glassmorphism, responsive controls, and high-performance layout (no 3D overhead).
 - **Dynamic URL Routing**: Just like ChatGPT, every generated note gets a unique 5-character ID (e.g., `/home/X9F2A`). This enables seamless browser navigation (Back/Forward) and session persistence.
-- **Advanced Fallback AI Pipeline**: Ensures 99.9% uptime by automatically falling back to secondary and tertiary LLM engines (Sarvam -> Groq -> Gemini) if the primary engine fails.
+- **Advanced Fallback AI Pipeline**: Ensures 99.9% uptime by automatically falling back across LLM engines (NVIDIA NIM Nemotron -> Sarvam -> Groq -> Gemini) if the primary engine fails.
 - **Auto-Whisper Transcription**: If a video lacks YouTube subtitles, Veda AI seamlessly intercepts, downloads the audio track via `yt-dlp`, and transcribes it using Groq's lightning-fast `whisper-large-v3` model.
 - **Smart History Tracking**: A collapsible sidebar that saves your lecture history locally so you never lose your notes.
 
@@ -97,17 +97,15 @@ graph TD
 ## 🛠️ Tech Stack
 
 **Frontend:**
-- HTML5, Vanilla CSS3 (Glassmorphism design)
+- HTML5, Vanilla CSS3 (High-performance 2D Monochrome Glassmorphism)
 - JavaScript (Vanilla with HTML5 History API Routing)
-- Three.js & Vanta.js (3D Animations)
-- VanillaTilt.js (Card Interactions)
 - Feather Icons & Marked.js (Markdown Rendering)
 
 **Backend:**
 - Python 3.x
 - Flask (WSGI Web Framework)
 - `youtube-transcript-api` & `yt-dlp`
-- `requests`, `groq`, & `google-genai` (API Integrations)
+- `openai` (NVIDIA NIM), `groq`, `requests`, & `google-genai`
 
 ---
 
