@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Veda AI - Video Lecture Analyzer</title>
+    <title>Angkor AI - Video Lecture Analyzer</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,7 +33,7 @@
                 </button>
                 <a href="/home" class="brand-logo">
                     <i data-feather="book-open"></i>
-                    <span>Veda AI</span>
+                    <span>Angkor AI</span>
                 </a>
                 <span class="nav-brand-divider"></span>
                 <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer" class="nav-brand-emblem-link" title="DLM">
@@ -216,7 +216,7 @@
 
     <!-- Footer Bar (MetaCleaner style) -->
     <footer class="footer-bar">
-        <p>Developed by <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer">DLM</a> &bull; Veda AI</p>
+        <p>Developed by <a href="https://itsme-gilt.vercel.app" target="_blank" rel="noopener noreferrer">DLM</a> &bull; Angkor AI</p>
     </footer>
 
 
@@ -552,7 +552,7 @@
             
             // Sanitize filename
             const cleanTitle = metadata.title.replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 30);
-            element.download = `veda_notes_${cleanTitle}.md`;
+            element.download = `angkor_notes_${cleanTitle}.md`;
             
             document.body.appendChild(element);
             element.click();

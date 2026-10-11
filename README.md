@@ -1,4 +1,4 @@
-<h1 align="center">Veda AI - Video Lecture Analyzer</h1>
+<h1 align="center">Angkor AI - Video Lecture Analyzer</h1>
 
 <p align="center">
   <strong>Convert long, unstructured YouTube educational videos into highly structured, comprehensive teacher notes using advanced Large Language Models.</strong>
@@ -8,15 +8,15 @@
 
 ## 🧠 The Concept
 
-**Veda AI** is designed to solve a major problem for students and self-learners: spending hours watching long lectures to extract just a few core concepts. 
+**Angkor AI** is designed to solve a major problem for students and self-learners: spending hours watching long lectures to extract just a few core concepts. 
 
-Instead of manually taking notes, Veda AI automates the process by extracting the transcript of any YouTube video and feeding it through a powerful, custom-designed AI pipeline. The AI acts as a **Virtual Teacher**, breaking down the video into:
+Instead of manually taking notes, Angkor AI automates the process by extracting the transcript of any YouTube video and feeding it through a powerful, custom-designed AI pipeline. The AI acts as a **Virtual Teacher**, breaking down the video into:
 1. Core Principles & Philosophies
 2. Deep-dive Analogies
 3. Actionable Applications
 4. Summary & Key Takeaways
 
-Regardless of the language spoken in the video (e.g., Hindi), Veda AI strictly formats and translates the structured notes into **English**, creating a universal study guide.
+Regardless of the language spoken in the video (e.g., Hindi), Angkor AI strictly formats and translates the structured notes into **English**, creating a universal study guide.
 
 ---
 
