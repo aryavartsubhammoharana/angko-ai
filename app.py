@@ -320,10 +320,16 @@ def extract_transcript_via_ytdlp(video_id):
 
 def fetch_youtube_transcript(video_id):
     """Attempt to fetch transcript from YouTube directly using multi-tier fallback."""
+    # Priority 1: InnerTube client spoofing via yt-dlp (fast, bypasses datacenter IP blocks)
+    logging.info("Attempting InnerTube subtitle extraction for %s...", video_id)
+    ytdlp_result = extract_transcript_via_ytdlp(video_id)
+    if ytdlp_result and ytdlp_result.get('text'):
+        return ytdlp_result
+
     raw_data = None
     source_language = 'YouTube Subtitles'
 
-    # 1. Modern YouTubeTranscriptApi instance (1.x+)
+    # Priority 2: Modern YouTubeTranscriptApi instance (1.x+)
     try:
         ytt = YouTubeTranscriptApi()
 
