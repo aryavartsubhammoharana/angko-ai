@@ -389,26 +389,32 @@ def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-10
     transcript_text = transcript_text[:12000]
 
     prompt = f"""
-    Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
-    IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
-    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
+    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
+    
+    CRITICAL INSTRUCTIONS:
+    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
+    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
+    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
+    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
 
-    Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
+    Output your response in clean Markdown with the following exact structure:
 
-    # (Write the Main Video Topic Here)
-    ## (Write a Short Overview Here)
+    # (Concise, High-Impact Title of the Video's True Subject)
 
-    ### (Write the First Main Concept Here)
-    - (Write a detailed bullet point explanation here)
-    - (Add more bullet points as needed)
+    ## ⚡ Quick Crux (30-Second TL;DR)
+    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
 
-    ### (Write the Second Main Concept Here)
-    - (Write explanation...)
+    ## 🎯 What's Happening (The Core Breakdown & Reality)
+    - (Detail the main arguments, events, claims, and ground reality presented)
+    - (Include specific facts, examples, frameworks, or data points discussed)
+    - (Explain the key mechanisms or insights revealed in the video)
 
-    ### Conclusion
-    - (Write a comprehensive summary and final takeaways from the lecture here)
+    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
+    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
+    - (Highlight limitations, counter-arguments, caveats, or missing context)
 
-    CRITICAL: DO NOT output the literal template text like "(Write the Main Video Topic Here)". You must replace it with the actual content.
+    ## 💡 The Bottom Line & Final Verdict
+    - (Direct, actionable summary: what does this actually mean for the viewer?)
 
     Transcript:
     {transcript_text}
@@ -432,26 +438,32 @@ def analyze_transcript_groq(transcript_text, groq_key, model_name="llama-3.3-70b
     transcript_text = transcript_text[:24000]
 
     prompt = f"""
-    Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
-    IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
-    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
+    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
+    
+    CRITICAL INSTRUCTIONS:
+    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
+    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
+    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
+    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
 
-    Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
+    Output your response in clean Markdown with the following exact structure:
 
-    # (Write the Main Video Topic Here)
-    ## (Write a Short Overview Here)
+    # (Concise, High-Impact Title of the Video's True Subject)
 
-    ### (Write the First Main Concept Here)
-    - (Write a detailed bullet point explanation here)
-    - (Add more bullet points as needed)
+    ## ⚡ Quick Crux (30-Second TL;DR)
+    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
 
-    ### (Write the Second Main Concept Here)
-    - (Write explanation...)
+    ## 🎯 What's Happening (The Core Breakdown & Reality)
+    - (Detail the main arguments, events, claims, and ground reality presented)
+    - (Include specific facts, examples, frameworks, or data points discussed)
+    - (Explain the key mechanisms or insights revealed in the video)
 
-    ### Conclusion
-    - (Write a comprehensive summary and final takeaways from the lecture here)
+    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
+    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
+    - (Highlight limitations, counter-arguments, caveats, or missing context)
 
-    CRITICAL: DO NOT output the literal template text like "(Write the Main Video Topic Here)". You must replace it with the actual content.
+    ## 💡 The Bottom Line & Final Verdict
+    - (Direct, actionable summary: what does this actually mean for the viewer?)
 
     Transcript:
     {transcript_text}
@@ -471,26 +483,32 @@ def analyze_transcript_gemini(transcript_text, gemini_key):
     client = genai.Client(api_key=gemini_key)
 
     prompt = f"""
-    Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
-    IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
-    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
+    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
+    
+    CRITICAL INSTRUCTIONS:
+    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
+    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
+    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
+    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
 
-    Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
+    Output your response in clean Markdown with the following exact structure:
 
-    # (Write the Main Video Topic Here)
-    ## (Write a Short Overview Here)
+    # (Concise, High-Impact Title of the Video's True Subject)
 
-    ### (Write the First Main Concept Here)
-    - (Write a detailed bullet point explanation here)
-    - (Add more bullet points as needed)
+    ## ⚡ Quick Crux (30-Second TL;DR)
+    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
 
-    ### (Write the Second Main Concept Here)
-    - (Write explanation...)
+    ## 🎯 What's Happening (The Core Breakdown & Reality)
+    - (Detail the main arguments, events, claims, and ground reality presented)
+    - (Include specific facts, examples, frameworks, or data points discussed)
+    - (Explain the key mechanisms or insights revealed in the video)
 
-    ### Conclusion
-    - (Write a comprehensive summary and final takeaways from the lecture here)
+    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
+    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
+    - (Highlight limitations, counter-arguments, caveats, or missing context)
 
-    CRITICAL: DO NOT output the literal template text like "(Write the Main Video Topic Here)". You must replace it with the actual content.
+    ## 💡 The Bottom Line & Final Verdict
+    - (Direct, actionable summary: what does this actually mean for the viewer?)
 
     Transcript:
     {transcript_text}
@@ -523,26 +541,32 @@ def analyze_transcript_nvidia(transcript_text, nvidia_key, model_name="nvidia/ne
     transcript_text = transcript_text[:24000]
 
     prompt = f"""
-    Analyze the following YouTube video lecture transcript. Explain the concepts point-by-point, acting like a teacher explaining a topic to a student.
-    IMPORTANT: Your entire output MUST be strictly in the English language only, regardless of the language used in the transcript.
-    MATHEMATICAL NOTATION: Whenever mathematics, equations, formulas, physical constants, or technical expressions appear, format them using standard LaTeX notation (e.g. inline math with $...$ and standalone equations with $$...$$).
+    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
+    
+    CRITICAL INSTRUCTIONS:
+    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
+    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
+    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
+    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
 
-    Output your response in Markdown format. Use the following structure, but REPLACE the text in parentheses with the actual information from the video:
+    Output your response in clean Markdown with the following exact structure:
 
-    # (Write the Main Video Topic Here)
-    ## (Write a Short Overview Here)
+    # (Concise, High-Impact Title of the Video's True Subject)
 
-    ### (Write the First Main Concept Here)
-    - (Write a detailed bullet point explanation here)
-    - (Add more bullet points as needed)
+    ## ⚡ Quick Crux (30-Second TL;DR)
+    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
 
-    ### (Write the Second Main Concept Here)
-    - (Write explanation...)
+    ## 🎯 What's Happening (The Core Breakdown & Reality)
+    - (Detail the main arguments, events, claims, and ground reality presented)
+    - (Include specific facts, examples, frameworks, or data points discussed)
+    - (Explain the key mechanisms or insights revealed in the video)
 
-    ### Conclusion
-    - (Write a comprehensive summary and final takeaways from the lecture here)
+    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
+    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
+    - (Highlight limitations, counter-arguments, caveats, or missing context)
 
-    CRITICAL: DO NOT output the literal template text like "(Write the Main Video Topic Here)". You must replace it with the actual content.
+    ## 💡 The Bottom Line & Final Verdict
+    - (Direct, actionable summary: what does this actually mean for the viewer?)
 
     Transcript:
     {transcript_text}
