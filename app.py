@@ -231,8 +231,95 @@ def get_youtube_metadata(url):
     return metadata
 
 
+def extract_transcript_via_ytdlp(video_id):
+    """Fallback subtitle extractor using yt-dlp InnerTube client spoofing (bypasses datacenter IP blocks)."""
+    try:
+        canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+        ydl_opts = {
+            'skip_download': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'quiet': True,
+            'no_warnings': True,
+            'extractor_args': {'youtube': ['client=ANDROID,IOS,WEB']}
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(canonical_url, download=False)
+            sub_dict = info.get('subtitles', {}) or {}
+            auto_dict = info.get('automatic_captions', {}) or {}
+
+            # Prioritize standard English/Hindi or any first available
+            target_track = None
+            source_lang = 'YouTube Subtitles'
+            for lang in ['en', 'hi', 'en-US', 'en-GB']:
+                if lang in sub_dict:
+                    target_track = sub_dict[lang]
+                    source_lang = f'YouTube Subtitles ({lang})'
+                    break
+                if lang in auto_dict:
+                    target_track = auto_dict[lang]
+                    source_lang = f'YouTube Auto-Captions ({lang})'
+                    break
+
+            if not target_track and sub_dict:
+                lang_key = next(iter(sub_dict))
+                target_track = sub_dict[lang_key]
+                source_lang = f'YouTube Subtitles ({lang_key})'
+            if not target_track and auto_dict:
+                lang_key = next(iter(auto_dict))
+                target_track = auto_dict[lang_key]
+                source_lang = f'YouTube Auto-Captions ({lang_key})'
+
+            if not target_track:
+                return None
+
+            # Prefer json3 format URL
+            json3_url = next((f['url'] for f in target_track if f.get('ext') == 'json3'), None)
+            if not json3_url:
+                json3_url = target_track[0].get('url')
+
+            if not json3_url:
+                return None
+
+            resp = requests.get(json3_url, timeout=12)
+            if resp.status_code != 200:
+                return None
+
+            data = resp.json()
+            segments = []
+            for event in data.get('events', []):
+                if 'segs' in event:
+                    seg_text = ''.join(s.get('utf8', '') for s in event.get('segs', [])).strip()
+                    if seg_text and seg_text != '\n':
+                        start_sec = float(event.get('tStartMs', 0)) / 1000.0
+                        dur_sec = float(event.get('dDurationMs', 0)) / 1000.0
+                        segments.append({
+                            'text': seg_text,
+                            'start': start_sec,
+                            'duration': dur_sec
+                        })
+
+            if not segments:
+                return None
+
+            full_text = " ".join([seg['text'] for seg in segments if seg['text']])
+            if not full_text.strip():
+                return None
+
+            return {
+                'text': full_text,
+                'segments': segments,
+                'language': source_lang,
+                'language_code': 'auto',
+                'source': 'YouTube Subtitles (InnerTube)'
+            }
+    except Exception as e:
+        logging.warning("yt-dlp subtitle extraction fallback error: %s", e)
+        return None
+
+
 def fetch_youtube_transcript(video_id):
-    """Attempt to fetch transcript from YouTube directly, supporting 1.x and legacy APIs."""
+    """Attempt to fetch transcript from YouTube directly using multi-tier fallback."""
     raw_data = None
     source_language = 'YouTube Subtitles'
 
@@ -306,6 +393,13 @@ def fetch_youtube_transcript(video_id):
                 except Exception as e_leg:
                     logging.debug("Legacy transcript list failed: %s", e_leg)
 
+    # 3. If standard transcript API failed (e.g. cloud datacenter IP blocked), use yt-dlp InnerTube extractor
+    if not raw_data:
+        logging.info("YouTubeTranscriptApi returned no data. Trying yt-dlp InnerTube subtitle extractor...")
+        ytdlp_result = extract_transcript_via_ytdlp(video_id)
+        if ytdlp_result and ytdlp_result.get('text'):
+            return ytdlp_result
+
     if not raw_data:
         return None
 
@@ -361,7 +455,6 @@ def transcribe_audio_fallback(url, groq_key):
     if free_bytes < 100 * 1024 * 1024:
         raise RuntimeError("Insufficient server disk space for audio processing.")
 
-    client = Groq(api_key=groq_key)
     unique_suffix = uuid.uuid4().hex[:8]
     output_template = os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_%(id)s.%(ext)s')
 
@@ -396,13 +489,29 @@ def transcribe_audio_fallback(url, groq_key):
             raise FileNotFoundError("Audio file download failed.")
         audio_file = candidate_files[0]
 
-        logging.info("Transcribing via Groq Whisper...")
+        logging.info("Transcribing via Groq Whisper HTTP API...")
         with open(audio_file, "rb") as file:
-            translation = client.audio.transcriptions.create(
-                file=(os.path.basename(audio_file), file.read()),
-                model="whisper-large-v3",
-                response_format="verbose_json"
-            )
+            audio_bytes = file.read()
+
+        ext = os.path.splitext(audio_file)[1].lstrip('.').lower() or 'm4a'
+        mime = f'audio/{ext}' if ext in ('mp3', 'wav', 'ogg', 'webm') else 'audio/mp4'
+
+        headers = {'Authorization': f'Bearer {groq_key}'}
+        files = {'file': (os.path.basename(audio_file), audio_bytes, mime)}
+        data = {'model': 'whisper-large-v3', 'response_format': 'verbose_json'}
+
+        groq_resp = requests.post(
+            'https://api.groq.com/openai/v1/audio/transcriptions',
+            headers=headers,
+            files=files,
+            data=data,
+            timeout=180
+        )
+
+        if groq_resp.status_code != 200:
+            raise RuntimeError(f"Groq API error ({groq_resp.status_code}): {groq_resp.text}")
+
+        translation = groq_resp.json()
 
         def get_field(item, name, default=None):
             if isinstance(item, dict):
@@ -497,9 +606,8 @@ def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-10
     return choice_msg.get("content") or choice_msg.get("reasoning_content") or ""
 
 
-def analyze_transcript_groq(transcript_text, groq_key, model_name="llama-3.3-70b-versatile"):
-    """Send transcript to Groq API as a fallback."""
-    client = Groq(api_key=groq_key)
+def analyze_transcript_groq(transcript_text, groq_key, model_name="openai/gpt-oss-120b"):
+    """Send transcript to Groq API via direct HTTP as a fallback."""
     transcript_text = transcript_text[:24000]
 
     prompt = f"""
@@ -534,13 +642,29 @@ def analyze_transcript_groq(transcript_text, groq_key, model_name="llama-3.3-70b
     {transcript_text}
     """
 
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=6000,
-        temperature=0.3,
-    )
-    return response.choices[0].message.content
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json"
+    }
+    candidate_models = [model_name, "openai/gpt-oss-120b", "llama-3.3-70b-versatile", "qwen/qwen3.8-27b"]
+    last_err = None
+    for m in candidate_models:
+        payload = {
+            "model": m,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 4096,
+            "temperature": 0.3
+        }
+        try:
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=90)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"]
+            last_err = RuntimeError(f"Groq {m} returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            last_err = e
+            continue
+    raise last_err or RuntimeError("All Groq models failed.")
 
 
 def analyze_transcript_gemini(transcript_text, gemini_key):
@@ -716,7 +840,7 @@ def analyze():
 
     model_name = os.environ.get('SARVAM_MODEL', 'sarvam-105b-conversations')
 
-    user_sarvam_key = os.environ.get('SARVAM_API_KEY', '').strip() or 'sk_na48zian_rX1TRUsO9jRDGDNqC696jCgx'
+    user_sarvam_key = os.environ.get('SARVAM_API_KEY', '').strip()
     user_groq_key = os.environ.get('GROQ_API_KEY', '').strip()
     user_nvidia_key = os.environ.get('NVIDIA_API_KEY', '').strip()
     user_gemini_key = os.environ.get('GEMINI_API_KEY', '').strip()
