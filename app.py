@@ -1,9 +1,5 @@
 import os
 import re
-import glob
-import shutil
-import tempfile
-import uuid
 import time
 import logging
 from collections import defaultdict
@@ -12,11 +8,11 @@ from urllib.parse import urlparse, parse_qs, quote_plus
 import requests
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
-import yt_dlp
-from youtube_transcript_api import YouTubeTranscriptApi
-from google import genai
-from groq import Groq
-from openai import OpenAI
+
+# Modular service imports
+from redis_cache import get_cached_transcript, set_cached_transcript
+from transcripts import get_transcript_with_fallback
+from llm import generate_video_intelligence
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +32,7 @@ app = Flask(
     template_folder=os.path.join(BASE_DIR, 'templates')
 )
 
+
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     from flask import send_from_directory
@@ -46,6 +43,7 @@ def serve_static(filename):
 def favicon():
     from flask import send_from_directory
     return send_from_directory(os.path.join(BASE_DIR, 'static'), 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
 
 # Security: Set secret key and maximum request body size (64 KB)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY') or os.urandom(32).hex()
@@ -98,33 +96,6 @@ class SimpleRateLimiter:
 
 
 rate_limiter = SimpleRateLimiter(max_requests=10, window_seconds=60)
-
-
-def find_ffmpeg_binaries():
-    """Locate ffmpeg and ffprobe on Windows or other systems."""
-    candidates = []
-    for name in ["ffmpeg", "ffprobe"]:
-        path = shutil.which(name)
-        if path:
-            candidates.append((name, path))
-            continue
-
-        common_paths = [
-            os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "yt-dlp", "FFmpeg", "bin"),
-            os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "ffmpeg", "bin"),
-            os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "ffmpeg", "bin"),
-            r"C:\Program Files\KMPlayer 64X\LAVFilters64",
-            r"C:\Program Files\Git\usr\bin",
-        ]
-        for folder in common_paths:
-            candidate = os.path.join(folder, name + ".exe" if os.name == "nt" else name)
-            if os.path.exists(candidate):
-                candidates.append((name, candidate))
-                break
-
-    ffmpeg = next((path for name, path in candidates if name == "ffmpeg"), None)
-    ffprobe = next((path for name, path in candidates if name == "ffprobe"), None)
-    return ffmpeg, ffprobe
 
 
 def extract_video_id(url):
@@ -189,14 +160,13 @@ def get_youtube_metadata(url):
         'duration': None
     }
 
-    # Strict internal assertion against SSRF: ensure it's a valid canonical YouTube URL
     video_id = extract_video_id(url)
     if not video_id:
         return metadata
     safe_canonical_url = f"https://www.youtube.com/watch?v={video_id}"
 
     try:
-        # 1. Get basic metadata from oEmbed with URL encoding
+        # 1. Get basic metadata from oEmbed
         encoded_url = quote_plus(safe_canonical_url)
         response = requests.get(f"https://www.youtube.com/oembed?url={encoded_url}&format=json", timeout=10)
         if response.status_code == 200:
@@ -218,7 +188,6 @@ def get_youtube_metadata(url):
             duration_match = re.search(r'<meta itemprop="duration" content="([^"]+)">', html_response.text)
             if duration_match:
                 duration_str = duration_match.group(1)
-                # Parse ISO 8601 duration (e.g. PT1H5M33S)
                 parsed = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration_str)
                 if parsed:
                     hours = int(parsed.group(1) or 0)
@@ -256,662 +225,7 @@ def get_youtube_metadata(url):
     return metadata
 
 
-def extract_transcript_via_ytdlp(video_id):
-    """Fallback subtitle extractor using yt-dlp InnerTube client spoofing (bypasses datacenter IP blocks)."""
-    try:
-        canonical_url = f"https://www.youtube.com/watch?v={video_id}"
-        ydl_opts = {
-            'skip_download': True,
-            'writesubtitles': True,
-            'writeautomaticsub': True,
-            'quiet': True,
-            'no_warnings': True,
-            'extractor_args': {'youtube': ['client=ANDROID,IOS,WEB']}
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(canonical_url, download=False)
-            sub_dict = info.get('subtitles', {}) or {}
-            auto_dict = info.get('automatic_captions', {}) or {}
-
-            # Prioritize standard English/Hindi or any first available
-            target_track = None
-            source_lang = 'YouTube Subtitles'
-            for lang in ['en', 'hi', 'en-US', 'en-GB']:
-                if lang in sub_dict:
-                    target_track = sub_dict[lang]
-                    source_lang = f'YouTube Subtitles ({lang})'
-                    break
-                if lang in auto_dict:
-                    target_track = auto_dict[lang]
-                    source_lang = f'YouTube Auto-Captions ({lang})'
-                    break
-
-            if not target_track and sub_dict:
-                lang_key = next(iter(sub_dict))
-                target_track = sub_dict[lang_key]
-                source_lang = f'YouTube Subtitles ({lang_key})'
-            if not target_track and auto_dict:
-                lang_key = next(iter(auto_dict))
-                target_track = auto_dict[lang_key]
-                source_lang = f'YouTube Auto-Captions ({lang_key})'
-
-            if not target_track:
-                return None
-
-            # Prefer json3 format URL
-            json3_url = next((f['url'] for f in target_track if f.get('ext') == 'json3'), None)
-            if not json3_url:
-                json3_url = target_track[0].get('url')
-
-            if not json3_url:
-                return None
-
-            resp = requests.get(json3_url, timeout=12)
-            if resp.status_code != 200:
-                return None
-
-            data = resp.json()
-            segments = []
-            for event in data.get('events', []):
-                if 'segs' in event:
-                    seg_text = ''.join(s.get('utf8', '') for s in event.get('segs', [])).strip()
-                    if seg_text and seg_text != '\n':
-                        start_sec = float(event.get('tStartMs', 0)) / 1000.0
-                        dur_sec = float(event.get('dDurationMs', 0)) / 1000.0
-                        segments.append({
-                            'text': seg_text,
-                            'start': start_sec,
-                            'duration': dur_sec
-                        })
-
-            if not segments:
-                return None
-
-            full_text = " ".join([seg['text'] for seg in segments if seg['text']])
-            if not full_text.strip():
-                return None
-
-            return {
-                'text': full_text,
-                'segments': segments,
-                'language': source_lang,
-                'language_code': 'auto',
-                'source': 'YouTube Subtitles (InnerTube)'
-            }
-    except Exception as e:
-        logging.warning("yt-dlp subtitle extraction fallback error: %s", e)
-        return None
-
-
-def fetch_youtube_transcript(video_id):
-    """Attempt to fetch transcript from YouTube directly using multi-tier fallback."""
-    # Priority 1: InnerTube client spoofing via yt-dlp (fast, bypasses datacenter IP blocks)
-    logging.info("Attempting InnerTube subtitle extraction for %s...", video_id)
-    ytdlp_result = extract_transcript_via_ytdlp(video_id)
-    if ytdlp_result and ytdlp_result.get('text'):
-        return ytdlp_result
-
-    raw_data = None
-    source_language = 'YouTube Subtitles'
-
-    # Priority 2: Modern YouTubeTranscriptApi instance (1.x+)
-    try:
-        ytt = YouTubeTranscriptApi()
-
-        # Priority 1: Request preferred languages (en, hi, ur)
-        try:
-            fetched = ytt.fetch(video_id, languages=['en', 'en-US', 'hi', 'ur'])
-            raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
-            source_language = 'YouTube Subtitles'
-        except Exception as e_pref:
-            logging.debug("Preferred languages fetch failed: %s", e_pref)
-
-        # Priority 2: Request default transcript without language filter
-        if not raw_data:
-            try:
-                fetched = ytt.fetch(video_id)
-                raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
-                source_language = 'YouTube Subtitles'
-            except Exception as e_def:
-                logging.debug("Default transcript fetch failed: %s", e_def)
-
-        # Priority 3: Iterate through available transcript list (manual or auto-generated)
-        if not raw_data:
-            try:
-                t_list = ytt.list(video_id)
-                target_transcript = None
-                try:
-                    target_transcript = t_list.find_transcript(['en', 'en-US', 'hi', 'ur'])
-                except Exception:
-                    pass
-
-                if not target_transcript:
-                    try:
-                        target_transcript = t_list.find_generated_transcript(['en', 'en-US', 'hi', 'ur'])
-                    except Exception:
-                        pass
-
-                if not target_transcript:
-                    for t in t_list:
-                        target_transcript = t
-                        break
-
-                if target_transcript:
-                    fetched = target_transcript.fetch()
-                    raw_data = fetched.to_raw_data() if hasattr(fetched, 'to_raw_data') else list(fetched)
-                    source_language = getattr(target_transcript, 'language', 'YouTube Subtitles')
-            except Exception as e_list:
-                logging.debug("Modern transcript list iteration failed: %s", e_list)
-    except Exception as e_init:
-        logging.debug("Modern YouTubeTranscriptApi instance failed: %s", e_init)
-
-    # 2. Legacy class methods fallback (0.6.x)
-    if not raw_data and hasattr(YouTubeTranscriptApi, 'get_transcript'):
-        try:
-            raw_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'hi', 'ur'])
-            source_language = 'YouTube Subtitles'
-        except Exception:
-            try:
-                raw_data = YouTubeTranscriptApi.get_transcript(video_id)
-                source_language = 'YouTube Subtitles'
-            except Exception:
-                try:
-                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                    for t in transcript_list:
-                        raw_data = t.fetch()
-                        source_language = getattr(t, 'language', 'YouTube Subtitles')
-                        break
-                except Exception as e_leg:
-                    logging.debug("Legacy transcript list failed: %s", e_leg)
-
-    # 3. If standard transcript API failed (e.g. cloud datacenter IP blocked), use yt-dlp InnerTube extractor
-    if not raw_data:
-        logging.info("YouTubeTranscriptApi returned no data. Trying yt-dlp InnerTube subtitle extractor...")
-        ytdlp_result = extract_transcript_via_ytdlp(video_id)
-        if ytdlp_result and ytdlp_result.get('text'):
-            return ytdlp_result
-
-    if not raw_data:
-        return None
-
-    if hasattr(raw_data, 'to_raw_data'):
-        try:
-            raw_data = raw_data.to_raw_data()
-        except Exception:
-            pass
-
-    # Normalize segment data into uniform Python dictionaries
-    normalized_segments = []
-    for item in raw_data:
-        if isinstance(item, dict):
-            text = str(item.get('text', '') or '')
-            start = float(item.get('start', 0.0) or 0.0)
-            duration = float(item.get('duration', 0.0) or 0.0)
-        else:
-            text = str(getattr(item, 'text', '') or '')
-            start = float(getattr(item, 'start', 0.0) or 0.0)
-            duration = float(getattr(item, 'duration', 0.0) or 0.0)
-
-        if text.strip():
-            normalized_segments.append({
-                'text': text,
-                'start': start,
-                'duration': duration
-            })
-
-    full_text = " ".join([seg['text'] for seg in normalized_segments if seg['text']])
-    if not full_text.strip():
-        return None
-
-    return {
-        'text': full_text,
-        'segments': normalized_segments,
-        'language': source_language,
-        'language_code': 'auto',
-        'source': 'YouTube Subtitles'
-    }
-
-
-def fetch_transcript_via_supadata(video_url, supadata_key, lang=None):
-    """Fetch transcript via Supadata AI universal transcript endpoint.
-    Handles both direct JSON segments and plain-text fallbacks."""
-    if not supadata_key:
-        return None
-
-    try:
-        logging.info("Attempting Supadata universal transcript API for %s...", video_url)
-        params = {'url': video_url, 'text': 'false'}
-        if lang:
-            params['lang'] = lang
-
-        headers = {'x-api-key': supadata_key}
-        resp = requests.get(
-            'https://api.supadata.ai/v1/transcript',
-            headers=headers,
-            params=params,
-            timeout=25
-        )
-
-        if resp.status_code != 200:
-            logging.warning("Supadata transcript API returned HTTP %s: %s", resp.status_code, resp.text)
-            return None
-
-        data = resp.json()
-        if not isinstance(data, dict):
-            return None
-
-        content = data.get('content')
-        detected_lang = data.get('lang', 'auto')
-
-        normalized_segments = []
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict):
-                    txt = str(item.get('text', '') or '').strip()
-                    if not txt:
-                        continue
-                    # Supadata offset and duration are in milliseconds
-                    offset_ms = float(item.get('offset', 0.0) or 0.0)
-                    dur_ms = float(item.get('duration', 0.0) or 0.0)
-                    normalized_segments.append({
-                        'text': txt,
-                        'start': round(offset_ms / 1000.0, 2),
-                        'duration': round(dur_ms / 1000.0, 2)
-                    })
-        elif isinstance(content, str) and content.strip():
-            # If string returned, create a single baseline segment
-            normalized_segments.append({
-                'text': content.strip(),
-                'start': 0.0,
-                'duration': 0.0
-            })
-
-        if not normalized_segments:
-            return None
-
-        full_text = " ".join([seg['text'] for seg in normalized_segments if seg['text']])
-        if not full_text.strip():
-            return None
-
-        return {
-            'text': full_text,
-            'segments': normalized_segments,
-            'language': f"Supadata Transcript ({detected_lang})",
-            'language_code': detected_lang,
-            'source': 'Supadata AI'
-        }
-    except Exception as e:
-        logging.warning("Supadata transcript error: %s", e)
-        return None
-
-
-def transcribe_audio_fallback(url, groq_key):
-    """Download audio and transcribe using Groq Whisper if no subtitles are available on YouTube."""
-    if not groq_key:
-        raise RuntimeError(
-            "This video does not have subtitles/transcripts available on YouTube. "
-            "Please configure a valid Groq API Key in .env to enable audio transcription fallback."
-        )
-
-    # Disk space pre-check (require at least 100 MB free)
-    temp_dir = tempfile.gettempdir()
-    free_bytes = shutil.disk_usage(temp_dir).free
-    if free_bytes < 100 * 1024 * 1024:
-        raise RuntimeError("Insufficient server disk space for audio processing.")
-
-    unique_suffix = uuid.uuid4().hex[:8]
-    output_template = os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_%(id)s.%(ext)s')
-
-    # Streamlined yt-dlp config: prefers m4a/webm directly without requiring ffmpeg
-    ydl_opts = {
-        'format': 'ba[ext=m4a]/ba[ext=webm]/bestaudio/best',
-        'outtmpl': output_template,
-        'quiet': True,
-        'noplaylist': True,
-        'no_warnings': True,
-        'extractor_args': {'youtube': ['client=IOS,ANDROID,WEB']}
-    }
-
-    ffmpeg_path, _ = find_ffmpeg_binaries()
-    if ffmpeg_path:
-        ydl_opts['ffmpeg_location'] = os.path.dirname(ffmpeg_path)
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '128',
-        }]
-
-    logging.info("Downloading audio for transcription fallback...")
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_id = info.get('id')
-
-        # Locate downloaded audio file (.m4a, .webm, or .mp3)
-        candidate_files = glob.glob(os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_*'))
-        if not candidate_files:
-            raise FileNotFoundError("Audio file download failed.")
-        audio_file = candidate_files[0]
-
-        logging.info("Transcribing via Groq Whisper HTTP API...")
-        with open(audio_file, "rb") as file:
-            audio_bytes = file.read()
-
-        ext = os.path.splitext(audio_file)[1].lstrip('.').lower() or 'm4a'
-        mime = f'audio/{ext}' if ext in ('mp3', 'wav', 'ogg', 'webm') else 'audio/mp4'
-
-        headers = {'Authorization': f'Bearer {groq_key}'}
-        files = {'file': (os.path.basename(audio_file), audio_bytes, mime)}
-        data = {'model': 'whisper-large-v3', 'response_format': 'verbose_json'}
-
-        groq_resp = requests.post(
-            'https://api.groq.com/openai/v1/audio/transcriptions',
-            headers=headers,
-            files=files,
-            data=data,
-            timeout=180
-        )
-
-        if groq_resp.status_code != 200:
-            raise RuntimeError(f"Groq API error ({groq_resp.status_code}): {groq_resp.text}")
-
-        translation = groq_resp.json()
-
-        def get_field(item, name, default=None):
-            if isinstance(item, dict):
-                return item.get(name, default)
-            return getattr(item, name, default)
-
-        segments = []
-        translation_segments = get_field(translation, 'segments')
-        if translation_segments:
-            for seg in translation_segments:
-                start = float(get_field(seg, 'start', 0.0) or 0.0)
-                end = float(get_field(seg, 'end', start) or start)
-                segments.append({
-                    'text': get_field(seg, 'text', ''),
-                    'start': start,
-                    'duration': max(0.0, end - start)
-                })
-            full_text = get_field(translation, 'text', '') or " ".join(
-                segment['text'] for segment in segments if segment.get('text')
-            )
-        else:
-            full_text = translation.get('text', '') if isinstance(translation, dict) else str(translation)
-            segments = [{'text': full_text, 'start': 0.0, 'duration': info.get('duration', 0.0)}]
-
-        return {
-            'text': full_text,
-            'segments': segments,
-            'language': 'English (Auto-transcribed)',
-            'language_code': 'en',
-            'source': 'Groq Whisper V3'
-        }
-    finally:
-        # Secure cleanup: remove all temporary audio files generated with this unique suffix
-        for pattern_file in glob.glob(os.path.join(temp_dir, f'veda_temp_audio_{unique_suffix}_*')):
-            try:
-                os.remove(pattern_file)
-            except Exception:
-                pass
-
-
-def analyze_transcript_sarvam(transcript_text, sarvam_key, model_name="sarvam-105b-conversations"):
-    """Send transcript to Sarvam AI API for structured lecture-style notes."""
-    headers = {
-        "api-subscription-key": sarvam_key,
-        "Content-Type": "application/json"
-    }
-
-    transcript_text = transcript_text[:12000]
-
-    prompt = f"""
-    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
-    
-    CRITICAL INSTRUCTIONS:
-    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
-    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
-    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
-    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
-
-    Output your response in clean Markdown with the following exact structure:
-
-    # (Concise, High-Impact Title of the Video's True Subject)
-
-    ## ⚡ Quick Crux (30-Second TL;DR)
-    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
-
-    ## 🎯 What's Happening (The Core Breakdown & Reality)
-    - (Detail the main arguments, events, claims, and ground reality presented)
-    - (Include specific facts, examples, frameworks, or data points discussed)
-    - (Explain the key mechanisms or insights revealed in the video)
-
-    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
-    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
-    - (Highlight limitations, counter-arguments, caveats, or missing context)
-
-    ## 💡 The Bottom Line & Final Verdict
-    - (Direct, actionable summary: what does this actually mean for the viewer?)
-
-    Transcript:
-    {transcript_text}
-    """
-
-    payload = {
-        "model": model_name,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 4096,
-        "temperature": 0.3
-    }
-
-    response = requests.post("https://api.sarvam.ai/v1/chat/completions", json=payload, headers=headers, timeout=180)
-    response.raise_for_status()
-    choice_msg = response.json()["choices"][0]["message"]
-    return choice_msg.get("content") or choice_msg.get("reasoning_content") or ""
-
-
-def analyze_transcript_groq(transcript_text, groq_key, model_name="openai/gpt-oss-120b"):
-    """Send transcript to Groq API via direct HTTP as a fallback."""
-    transcript_text = transcript_text[:24000]
-
-    prompt = f"""
-    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
-    
-    CRITICAL INSTRUCTIONS:
-    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
-    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
-    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
-    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
-
-    Output your response in clean Markdown with the following exact structure:
-
-    # (Concise, High-Impact Title of the Video's True Subject)
-
-    ## ⚡ Quick Crux (30-Second TL;DR)
-    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
-
-    ## 🎯 What's Happening (The Core Breakdown & Reality)
-    - (Detail the main arguments, events, claims, and ground reality presented)
-    - (Include specific facts, examples, frameworks, or data points discussed)
-    - (Explain the key mechanisms or insights revealed in the video)
-
-    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
-    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
-    - (Highlight limitations, counter-arguments, caveats, or missing context)
-
-    ## 💡 The Bottom Line & Final Verdict
-    - (Direct, actionable summary: what does this actually mean for the viewer?)
-
-    Transcript:
-    {transcript_text}
-    """
-
-    headers = {
-        "Authorization": f"Bearer {groq_key}",
-        "Content-Type": "application/json"
-    }
-    candidate_models = [model_name, "openai/gpt-oss-120b", "llama-3.3-70b-versatile", "qwen/qwen3.8-27b"]
-    last_err = None
-    for m in candidate_models:
-        payload = {
-            "model": m,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 4096,
-            "temperature": 0.3
-        }
-        try:
-            resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=90)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data["choices"][0]["message"]["content"]
-            last_err = RuntimeError(f"Groq {m} returned {resp.status_code}: {resp.text}")
-        except Exception as e:
-            last_err = e
-            continue
-    raise last_err or RuntimeError("All Groq models failed.")
-
-
-def analyze_transcript_gemini(transcript_text, gemini_key):
-    """Send transcript to Google Gemini API as a fallback with model resilience."""
-    client = genai.Client(api_key=gemini_key)
-
-    prompt = f"""
-    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
-    
-    CRITICAL INSTRUCTIONS:
-    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
-    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
-    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
-    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
-
-    Output your response in clean Markdown with the following exact structure:
-
-    # (Concise, High-Impact Title of the Video's True Subject)
-
-    ## ⚡ Quick Crux (30-Second TL;DR)
-    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
-
-    ## 🎯 What's Happening (The Core Breakdown & Reality)
-    - (Detail the main arguments, events, claims, and ground reality presented)
-    - (Include specific facts, examples, frameworks, or data points discussed)
-    - (Explain the key mechanisms or insights revealed in the video)
-
-    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
-    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
-    - (Highlight limitations, counter-arguments, caveats, or missing context)
-
-    ## 💡 The Bottom Line & Final Verdict
-    - (Direct, actionable summary: what does this actually mean for the viewer?)
-
-    Transcript:
-    {transcript_text}
-    """
-
-    candidate_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-    last_err = None
-    for model_name in candidate_models:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt
-            )
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            last_err = e
-            logging.warning("Gemini model %s failed: %s. Trying next model...", model_name, e)
-            continue
-    raise last_err or RuntimeError("All Gemini models failed to generate content.")
-
-
-def analyze_transcript_nvidia(transcript_text, nvidia_key, model_name="nvidia/nemotron-3-ultra-550b-a55b"):
-    """Send transcript to NVIDIA NIM API using OpenAI client with streaming support."""
-    client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=nvidia_key
-    )
-
-    transcript_text = transcript_text[:24000]
-
-    prompt = f"""
-    You are an Executive Video Intelligence Analyst. Analyze the following YouTube video transcript and break down the ground reality of what is being discussed.
-    
-    CRITICAL INSTRUCTIONS:
-    1. LANGUAGE: Your entire output MUST be strictly in clear, professional ENGLISH only, regardless of whatever language or mix of languages (e.g. Hindi, Hinglish, regional) was spoken in the video.
-    2. CORE MISSION: Deliver a sharp, high-signal breakdown of the actual subject matter: tell the user exactly what is happening, what is NOT happening (misconceptions/nuances/refutations), and the real crux without any filler or fluff.
-    3. MATHEMATICS & FORMULAS: If formulas, equations, code, or technical metrics appear, format them using standard LaTeX notation ($...$ for inline, $$...$$ for display).
-    4. REPLACING PLACEHOLDERS: Replace all section titles and bullet placeholders with the actual substantive analysis from the video. Do not output generic placeholders.
-
-    Output your response in clean Markdown with the following exact structure:
-
-    # (Concise, High-Impact Title of the Video's True Subject)
-
-    ## ⚡ Quick Crux (30-Second TL;DR)
-    - (2-3 crisp bullet points explaining the core essence and main takeaway of the video)
-
-    ## 🎯 What's Happening (The Core Breakdown & Reality)
-    - (Detail the main arguments, events, claims, and ground reality presented)
-    - (Include specific facts, examples, frameworks, or data points discussed)
-    - (Explain the key mechanisms or insights revealed in the video)
-
-    ## ❌ What's Not Happening (Misconceptions, Nuances & Warnings)
-    - (Clarify what is NOT true, what the speaker refuted, or where people commonly get misled)
-    - (Highlight limitations, counter-arguments, caveats, or missing context)
-
-    ## 💡 The Bottom Line & Final Verdict
-    - (Direct, actionable summary: what does this actually mean for the viewer?)
-
-    Transcript:
-    {transcript_text}
-    """
-
-    candidate_models = [
-        model_name,
-        "meta/llama-3.3-70b-instruct",
-        "nvidia/llama-3.1-nemotron-70b-instruct",
-        "mistralai/mistral-large-2-instruct"
-    ]
-    models_to_try = []
-    for m in candidate_models:
-        if m and m not in models_to_try:
-            models_to_try.append(m)
-
-    last_err = None
-    for model in models_to_try:
-        try:
-            extra_body = {}
-            if "nemotron" in model:
-                extra_body = {"chat_template_kwargs": {"enable_thinking": True}}
-
-            completion = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=6000,
-                extra_body=extra_body if extra_body else None,
-                stream=True
-            )
-
-            collected_content = []
-            for chunk in completion:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if getattr(delta, "content", None) is not None:
-                    collected_content.append(delta.content)
-
-            output_text = "".join(collected_content).strip()
-            if output_text:
-                return output_text
-        except Exception as e:
-            last_err = e
-            logging.warning("NVIDIA model %s failed: %s. Trying next candidate model...", model, e)
-            continue
-
-    raise last_err or RuntimeError("All NVIDIA models failed to generate content.")
-
-
-# Flask Routes
+# Flask Page Routes
 @app.route('/')
 @app.route('/home')
 @app.route('/home/<lecture_id>')
@@ -942,69 +256,61 @@ def analyze():
     if len(url) > 500:
         return jsonify({'error': 'URL length exceeds maximum permitted limit.'}), 400
 
-    model_name = os.environ.get('SARVAM_MODEL', 'sarvam-105b-conversations')
+    video_id = extract_video_id(url)
+    if not video_id or not re.match(r'^[a-zA-Z0-9_-]{11}$', video_id):
+        return jsonify({'error': 'Invalid YouTube URL or Video ID. Please provide a legitimate link.'}), 400
+
+    safe_canonical_url = f"https://www.youtube.com/watch?v={video_id}"
 
     user_sarvam_key = os.environ.get('SARVAM_API_KEY', '').strip()
     user_groq_key = os.environ.get('GROQ_API_KEY', '').strip()
     user_nvidia_key = os.environ.get('NVIDIA_API_KEY', '').strip()
     user_gemini_key = os.environ.get('GEMINI_API_KEY', '').strip()
     user_supadata_key = os.environ.get('SUPADATA_API', '').strip()
-
-    video_id = extract_video_id(url)
-
-    # Strict validation: YouTube IDs are exactly 11 characters (base64url)
-    if not video_id or not re.match(r'^[a-zA-Z0-9_-]{11}$', video_id):
-        return jsonify({'error': 'Invalid YouTube URL or Video ID. Please provide a legitimate link.'}), 400
-
-    # Sanitize and strictly reconstruct the URL to prevent SSRF attacks
-    safe_canonical_url = f"https://www.youtube.com/watch?v={video_id}"
+    sarvam_model = os.environ.get('SARVAM_MODEL', 'sarvam-105b-conversations')
 
     try:
-        # Step 1: Fetch Metadata using the strictly sanitized URL
+        # Step 1: Fetch Video Metadata
         metadata = get_youtube_metadata(safe_canonical_url)
         metadata['video_id'] = video_id
         metadata['url'] = safe_canonical_url
 
-        # Strict Duration Limit Check (20m 20s = 1220s)
+        # Check Duration Limit Early if duration is already known
         video_duration = metadata.get('duration')
         if video_duration is not None and float(video_duration) > 1220:
             return jsonify({
                 'error': 'Video is too long! We currently cannot generate notes for videos exceeding 20 minutes and 20 seconds.'
             }), 400
 
-        # Step 2: Fetch or Transcribe Audio (Multi-Tier Robust Fallback)
-        # Tier 1: YouTube Subtitles via InnerTube / YouTubeTranscriptApi
-        transcript_data = fetch_youtube_transcript(video_id)
+        # Step 2: Fetch Transcript with Redis Cache & Multi-tier Fallback
+        # Checks Redis cache -> InnerTube/YouTubeTranscriptApi -> Supadata (persists to Redis immediately) -> Groq Whisper
+        try:
+            transcript_data = get_transcript_with_fallback(
+                video_id=video_id,
+                canonical_url=safe_canonical_url,
+                supadata_key=user_supadata_key,
+                groq_key=user_groq_key
+            )
+        except Exception as transcript_err:
+            logging.error("Transcript retrieval failed: %s", transcript_err)
+            return jsonify({
+                'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or check server logs.'
+            }), 400
 
-        # Tier 2: Supadata AI universal transcript fallback
-        if not transcript_data and user_supadata_key:
-            logging.info("YouTube direct transcript failed. Attempting Supadata AI transcript fallback...")
-            try:
-                transcript_data = fetch_transcript_via_supadata(safe_canonical_url, user_supadata_key)
-            except Exception as supa_err:
-                logging.warning("Supadata transcript fallback error: %s", supa_err)
-
-        # Tier 3: Audio download + Groq Whisper transcription fallback
-        if not transcript_data:
-            logging.info("Subtitles unavailable. Attempting audio download and Groq Whisper fallback...")
-            try:
-                transcript_data = transcribe_audio_fallback(safe_canonical_url, user_groq_key)
-            except Exception as whisper_err:
-                logging.error("Groq Whisper transcription fallback failed: %s", whisper_err, exc_info=True)
-                return jsonify({
-                    'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or configure a valid Groq/Supadata API key for audio fallback.'
-                }), 400
+        if not transcript_data or not transcript_data.get('text'):
+            return jsonify({
+                'error': 'Could not extract transcript for this video. Please check if the video has speech or captions.'
+            }), 400
 
         # Calculate duration from transcript if missing from metadata
-        if (metadata.get('duration') is None or metadata.get('duration') == 0) and transcript_data and transcript_data.get('segments'):
+        if (metadata.get('duration') is None or metadata.get('duration') == 0) and transcript_data.get('segments'):
             try:
                 last_segment = transcript_data['segments'][-1]
                 metadata['duration'] = float(last_segment.get('start', 0)) + float(last_segment.get('duration', 0))
             except Exception:
                 pass
 
-        # Strict duration limit enforcement:
-        # If duration is still unknown or over 1220 seconds (20m 20s), abort processing
+        # Strict duration limit enforcement (20m 20s = 1220s)
         video_duration = metadata.get('duration')
         if video_duration is None:
             return jsonify({
@@ -1016,69 +322,19 @@ def analyze():
                 'error': 'Video is too long! We currently cannot generate notes for videos exceeding 20 minutes and 20 seconds.'
             }), 400
 
-        # Step 3: Run AI Analysis
-        analysis_result = None
-        analysis_engine = None
-        error_messages = []
+        # Step 3: Run AI Intelligence Analysis (NVIDIA -> Gemini -> Groq -> Sarvam)
+        keys_dict = {
+            'nvidia': user_nvidia_key,
+            'gemini': user_gemini_key,
+            'groq': user_groq_key,
+            'sarvam': user_sarvam_key
+        }
 
-        if not any([user_sarvam_key, user_groq_key, user_nvidia_key, user_gemini_key]):
-            return jsonify({
-                'error': 'No AI API keys configured. Please add SARVAM_API_KEY, GROQ_API_KEY, NVIDIA_API_KEY, or GEMINI_API_KEY to your .env file.'
-            }), 400
-
-        # 1. Try Sarvam API (Primary)
-        if user_sarvam_key:
-            logging.info("Running Sarvam AI analysis (%s)...", model_name)
-            try:
-                analysis_result = analyze_transcript_sarvam(transcript_data['text'], user_sarvam_key, model_name)
-                analysis_engine = f"Sarvam AI ({model_name})"
-            except Exception as e:
-                logging.warning("Sarvam AI analysis failed: %s", e)
-                error_messages.append(f"Sarvam: {str(e)}")
-        else:
-            error_messages.append("Sarvam Key missing.")
-
-        # 2. Try NVIDIA API (Fallback 1)
-        if not analysis_result and user_nvidia_key:
-            logging.info("Running NVIDIA NIM analysis fallback...")
-            try:
-                analysis_result = analyze_transcript_nvidia(transcript_data['text'], user_nvidia_key)
-                analysis_engine = "NVIDIA NIM (Nemotron)"
-            except Exception as e:
-                logging.warning("NVIDIA analysis failed: %s", e)
-                error_messages.append(f"NVIDIA: {str(e)}")
-        elif not analysis_result:
-            error_messages.append("NVIDIA Key missing.")
-
-        # 3. Try Gemini API (Fallback 2)
-        if not analysis_result and user_gemini_key:
-            logging.info("Running Gemini analysis fallback...")
-            try:
-                analysis_result = analyze_transcript_gemini(transcript_data['text'], user_gemini_key)
-                analysis_engine = "Gemini Flash (Fallback)"
-            except Exception as e:
-                logging.warning("Gemini analysis failed: %s", e)
-                error_messages.append(f"Gemini: {str(e)}")
-        elif not analysis_result:
-            error_messages.append("Gemini Key missing.")
-
-        # 4. Try Groq API (Fallback 3)
-        if not analysis_result and user_groq_key:
-            logging.info("Running Groq analysis fallback...")
-            try:
-                analysis_result = analyze_transcript_groq(transcript_data['text'], user_groq_key)
-                analysis_engine = "Groq LLaMA-3 (Fallback)"
-            except Exception as e:
-                logging.warning("Groq analysis failed: %s", e)
-                error_messages.append(f"Groq: {str(e)}")
-        elif not analysis_result:
-            error_messages.append("Groq Key missing.")
-
-        if not analysis_result:
-            logging.error("All AI analysis providers failed: %s", " | ".join(error_messages))
-            return jsonify({
-                'error': 'All configured AI analysis providers failed to respond. Please check your network and API keys in .env.'
-            }), 502
+        analysis_result, analysis_engine = generate_video_intelligence(
+            transcript_text=transcript_data['text'],
+            keys=keys_dict,
+            sarvam_model=sarvam_model
+        )
 
         return jsonify({
             'metadata': metadata,
@@ -1089,7 +345,7 @@ def analyze():
 
     except Exception as e:
         logging.error("Analysis route error: %s", e, exc_info=True)
-        return jsonify({'error': 'An unexpected error occurred while analyzing the lecture. Please try again.'}), 500
+        return jsonify({'error': f'An unexpected error occurred while analyzing the lecture: {str(e)}'}), 500
 
 
 if __name__ == '__main__':
