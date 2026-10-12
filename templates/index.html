@@ -557,91 +557,51 @@
                 feather.replace();
             }
 
-            showToast("Generating PDF report, please wait...", "info");
+            showToast("Generating high-quality PDF report, please wait...", "info");
 
-            // Build print container with high-contrast clean styling
-            const printElement = document.createElement('div');
-            printElement.style.padding = '24px 30px';
-            printElement.style.color = '#111827';
-            printElement.style.backgroundColor = '#ffffff';
-            printElement.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-            printElement.style.lineHeight = '1.6';
-
-            // Document Header
-            const headerHtml = `
-                <div style="border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span style="font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #4b5563;">ANGKOR AI &bull; EXECUTIVE REPORT</span>
-                        <span style="font-size: 11px; color: #6b7280;">Engine: ${activeAnalysis.engine || 'NVIDIA NIM'}</span>
-                    </div>
-                    <h1 style="font-size: 20px; font-weight: 800; color: #111827; margin: 0 0 6px 0;">${metadata.title || 'Video Intelligence Report'}</h1>
-                    <div style="font-size: 12px; color: #4b5563;">
-                        <span>Channel / Speaker: <strong>${metadata.author || 'Unknown'}</strong></span> &bull; 
-                        <span>Duration: <strong>${formatDuration(metadata.duration)}</strong></span> &bull; 
-                        <span>Generated on: <strong>${new Date().toLocaleDateString()}</strong></span>
-                    </div>
-                </div>
-            `;
-
-            // Cloned content
-            const contentClone = mdContainer.cloneNode(true);
-            // Adjust styles inside clone for crisp dark text on white PDF page
-            contentClone.style.color = '#1f2937';
-            contentClone.style.fontSize = '12px';
-            contentClone.style.lineHeight = '1.6';
-
-            // Ensure headings are crisp
-            contentClone.querySelectorAll('h1, h2, h3, h4').forEach(h => {
-                h.style.color = '#111827';
-                h.style.marginTop = '14px';
-                h.style.marginBottom = '6px';
-            });
-            contentClone.querySelectorAll('p, li').forEach(p => {
-                p.style.color = '#374151';
-                p.style.marginBottom = '6px';
-            });
-            contentClone.querySelectorAll('.katex').forEach(k => {
-                k.style.color = '#111827';
-            });
-
-            printElement.innerHTML = headerHtml;
-            printElement.appendChild(contentClone);
-
-            const cleanTitle = (metadata.title || 'report').replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 32);
-            const opt = {
-                margin: [10, 12, 12, 12],
-                filename: `angkor_report_${cleanTitle}.pdf`,
-                image: { type: 'jpeg', quality: 0.98 },
-                html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-
-            if (typeof html2pdf !== 'undefined') {
-                html2pdf().set(opt).from(printElement).save()
-                    .then(() => {
-                        showToast("PDF downloaded successfully!", "success");
-                    })
-                    .catch((err) => {
-                        console.error("PDF generation failed:", err);
-                        // Fallback to print
-                        window.print();
-                    })
-                    .finally(() => {
-                        if (downloadBtn) {
-                            downloadBtn.disabled = false;
-                            downloadBtn.innerHTML = originalBtnHtml;
-                            feather.replace();
-                        }
-                    });
-            } else {
-                // Fallback to native print if html2pdf didn't load
+            // Server-Side Python PDF Generation (ReportLab)
+            // Completely fixes broken tables, cut lines, misalignments, and excessive spacing
+            fetch('/api/generate-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    metadata: metadata,
+                    markdown: activeAnalysis.analysis || '',
+                    engine: activeAnalysis.engine || 'Angkor Executive AI'
+                })
+            })
+            .then(async (resp) => {
+                if (!resp.ok) {
+                    const errData = await resp.json().catch(() => ({}));
+                    throw new Error(errData.error || `Server returned ${resp.status}`);
+                }
+                return resp.blob();
+            })
+            .then((blob) => {
+                const cleanTitle = (metadata.title || 'report').replace(/[^a-z0-9]/gi, '_').toLowerCase().substring(0, 32);
+                const filename = `angkor_report_${cleanTitle}.pdf`;
+                const blobUrl = window.URL.createObjectURL(blob);
+                const tempLink = document.createElement('a');
+                tempLink.href = blobUrl;
+                tempLink.download = filename;
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                document.body.removeChild(tempLink);
+                setTimeout(() => window.URL.revokeObjectURL(blobUrl), 2000);
+                showToast("PDF report downloaded successfully!", "success");
+            })
+            .catch((err) => {
+                console.error("Server-side PDF generation failed, falling back to print:", err);
+                showToast("Generating print version...", "info");
                 window.print();
+            })
+            .finally(() => {
                 if (downloadBtn) {
                     downloadBtn.disabled = false;
                     downloadBtn.innerHTML = originalBtnHtml;
                     feather.replace();
                 }
-            }
+            });
         }
 
         // Cryptographically secure lecture ID generator

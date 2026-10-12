@@ -6,13 +6,14 @@ from collections import defaultdict
 from threading import Lock
 from urllib.parse import urlparse, parse_qs, quote_plus
 import requests
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_file
 from dotenv import load_dotenv
 
 # Modular service imports
 from redis_cache import get_cached_transcript, set_cached_transcript
 from transcripts import get_transcript_with_fallback
 from llm import generate_video_intelligence
+from pdf_generator import generate_pdf_report
 
 # Configure logging
 logging.basicConfig(
@@ -238,6 +239,36 @@ def about():
     return render_template('about.html')
 
 
+@app.route('/api/generate-pdf', methods=['POST'])
+def generate_pdf():
+    """Server-side PDF generation using Python ReportLab.
+    Eliminates HTML-to-canvas rendering bugs, broken tables, and awkward page splits."""
+    data = request.json or {}
+    markdown_text = data.get('markdown') or ''
+    metadata = data.get('metadata') or {}
+    engine_name = data.get('engine') or 'Angkor Executive AI'
+
+    if not markdown_text.strip():
+        return jsonify({'error': 'Markdown content is required to generate PDF.'}), 400
+
+    try:
+        import io
+        pdf_bytes = generate_pdf_report(metadata, markdown_text, engine_name)
+        title = metadata.get('title') or 'report'
+        clean_title = re.sub(r'[^a-zA-Z0-9_-]', '_', title)[:32].lower()
+        filename = f"angkor_report_{clean_title}.pdf"
+
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logging.error("Server-side PDF generation error: %s", e, exc_info=True)
+        return jsonify({'error': f'Failed to generate PDF: {str(e)}'}), 500
+
+
 @app.route('/api/analyze', methods=['POST'])
 def analyze():
     # Rate limiting: maximum 10 requests per minute per IP
@@ -282,12 +313,14 @@ def analyze():
                 'error': 'Video is too long! We currently cannot generate notes for videos exceeding 20 minutes and 20 seconds.'
             }), 400
 
-        # Step 2: Fetch Transcript via Supadata API (cached in Upstash Redis)
+        # Step 2: Fetch Transcript with Redis Cache & Multi-tier Fallback
+        # Checks Redis cache -> YouTube direct subtitles (Free) -> Supadata -> Groq Whisper
         try:
             transcript_data = get_transcript_with_fallback(
                 video_id=video_id,
                 canonical_url=safe_canonical_url,
-                supadata_key=user_supadata_key
+                supadata_key=user_supadata_key,
+                groq_key=user_groq_key
             )
         except Exception as transcript_err:
             logging.error("Transcript retrieval failed: %s", transcript_err)
