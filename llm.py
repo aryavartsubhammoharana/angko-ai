@@ -227,3 +227,94 @@ def generate_video_intelligence(transcript_text: str, keys: dict, sarvam_model: 
     raise RuntimeError(
         f"All configured AI analysis providers failed: {' | '.join(error_messages) if error_messages else 'No API keys provided'}"
     )
+
+
+CHAT_SYSTEM_PROMPT = """
+You are Angkor AI, an expert Executive Video Intelligence Assistant. You are conversing with a user about a specific YouTube video whose transcript is provided below.
+
+CRITICAL INSTRUCTIONS:
+1. Ground your answers strictly in the facts, claims, timestamps, and arguments presented in the video transcript.
+2. If the user asks about something NOT mentioned in the video, politely clarify that the video does not cover it, but you may offer brief helpful context.
+3. Keep answers crisp, high-signal, and easy to read. Use bullet points or code/LaTeX formulas ($...$ or $$...$$) where appropriate.
+4. Output must be professional, direct, and in clear ENGLISH (unless the user explicitly speaks to you in Hindi/Hinglish).
+
+Video Transcript:
+{transcript_text}
+"""
+
+
+def chat_with_transcript(transcript_text: str, message: str, history: list, keys: dict) -> str:
+    """Conversational assistant querying the video transcript.
+    Maintains user-isolated temporary history in a stateless fallback chain.
+    """
+    user_nvidia_key = keys.get('nvidia', '').strip()
+    user_gemini_key = keys.get('gemini', '').strip()
+    user_groq_key = keys.get('groq', '').strip()
+
+    system_instruction = CHAT_SYSTEM_PROMPT.format(transcript_text=transcript_text[:20000])
+
+    # Build message list (system + last 6 conversation turns + current query)
+    messages = [{"role": "system", "content": system_instruction}]
+    if history and isinstance(history, list):
+        for h in history[-6:]:
+            if isinstance(h, dict) and 'role' in h and 'content' in h:
+                r = h['role'] if h['role'] in ('user', 'assistant') else 'user'
+                messages.append({"role": r, "content": str(h['content'])[:2000]})
+    messages.append({"role": "user", "content": str(message)[:3000]})
+
+    # 1. Try NVIDIA NIM (Nemotron / LLaMA)
+    if user_nvidia_key:
+        client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=user_nvidia_key)
+        for model_name in ["nvidia/nemotron-3-ultra-550b-a55b", "nvidia/llama-3.1-nemotron-70b-instruct", "mistralai/mistral-large-2-instruct"]:
+            try:
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=1500
+                )
+                ans = completion.choices[0].message.content
+                if ans:
+                    return ans.strip()
+            except Exception as e:
+                logging.warning("NVIDIA Chat model %s failed: %s", model_name, e)
+                continue
+
+    # 2. Try Google Gemini Flash
+    if user_gemini_key:
+        try:
+            client = genai.Client(api_key=user_gemini_key)
+            # Format history for Gemini
+            gemini_prompt = f"{system_instruction}\n\nConversation History:\n"
+            for m in messages[1:]:
+                gemini_prompt += f"{m['role'].upper()}: {m['content']}\n"
+            gemini_prompt += f"\nASSISTANT:"
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=gemini_prompt
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            logging.warning("Gemini Chat fallback error: %s", e)
+
+    # 3. Try Groq LLaMA
+    if user_groq_key:
+        try:
+            headers = {"Authorization": f"Bearer {user_groq_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": messages,
+                "max_tokens": 1500,
+                "temperature": 0.4
+            }
+            resp = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=40)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logging.warning("Groq Chat fallback error: %s", e)
+
+    raise RuntimeError("All AI chat providers failed to respond. Please check your API keys.")
+

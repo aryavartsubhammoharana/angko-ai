@@ -195,22 +195,74 @@
                 </div>
 
                 <!-- Right Column: AI Generated notebook -->
+                <!-- Right Column: AI Generated notebook & Interactive Chat -->
                 <div class="notes-card">
                     <div class="notes-header">
-                        <div class="notes-engine-tag" id="engineTag">
-                            <i data-feather="cpu"></i>
-                            <span id="engineLabel">NVIDIA NIM</span>
+                        <!-- Navigation Tab Switcher -->
+                        <div class="view-tabs">
+                            <button class="view-tab active" id="tabNotesBtn" onclick="switchRightTab('notes')">
+                                <i data-feather="file-text"></i>
+                                <span>Executive Notes</span>
+                            </button>
+                            <button class="view-tab" id="tabChatBtn" onclick="switchRightTab('chat')">
+                                <i data-feather="message-square"></i>
+                                <span>Chat with Video</span>
+                                <span class="tab-badge">AI</span>
+                            </button>
                         </div>
                         <div class="notes-actions">
+                            <div class="notes-engine-tag" id="engineTag">
+                                <i data-feather="cpu"></i>
+                                <span id="engineLabel">NVIDIA NIM</span>
+                            </div>
                             <button class="btn btn-primary btn-sm" onclick="downloadPDF()" id="downloadPdfBtn" title="Download formatted PDF report">
-                                <i data-feather="file-text"></i>
-                                <span>Download PDF</span>
+                                <i data-feather="download"></i>
+                                <span>PDF</span>
                             </button>
                         </div>
                     </div>
-                    <!-- Rendered Markdown Body -->
-                    <div class="markdown-body" id="notesMarkdown">
+
+                    <!-- View 1: Rendered Markdown Body -->
+                    <div class="markdown-body tab-content-view active" id="notesMarkdown">
                         <!-- Loaded dynamically via JavaScript -->
+                    </div>
+
+                    <!-- View 2: Interactive Temporary Chat with Video -->
+                    <div class="chat-body tab-content-view" id="chatContainer">
+                        <!-- Suggested Quick Questions -->
+                        <div class="chat-quick-prompts" id="chatQuickPrompts">
+                            <button class="prompt-chip" onclick="sendQuickPrompt('Give me the top 3 key takeaways of this video.')">
+                                <span>⚡ 3 Key Takeaways</span>
+                            </button>
+                            <button class="prompt-chip" onclick="sendQuickPrompt('What are the main misconceptions refuted in this video?')">
+                                <span>❌ Misconceptions</span>
+                            </button>
+                            <button class="prompt-chip" onclick="sendQuickPrompt('Create a step-by-step actionable roadmap based on this lecture.')">
+                                <span>🎯 Actionable Roadmap</span>
+                            </button>
+                        </div>
+
+                        <!-- Chat Message Thread -->
+                        <div class="chat-messages" id="chatMessages">
+                            <div class="chat-message assistant">
+                                <div class="msg-avatar">
+                                    <i data-feather="cpu"></i>
+                                </div>
+                                <div class="msg-bubble">
+                                    <p>I have ingested the full video transcript. Ask me anything about what was discussed, specific timestamps, or actionable advice!</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Input Box -->
+                        <div class="chat-input-wrapper">
+                            <form id="chatForm" onsubmit="handleSendChatMessage(event)" class="chat-input-form">
+                                <input type="text" id="chatInput" placeholder="Ask a question about this video..." autocomplete="off">
+                                <button type="submit" id="chatSendBtn" class="chat-send-btn" title="Send message">
+                                    <i data-feather="send"></i>
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -481,6 +533,21 @@
             // Render LaTeX / Math via KaTeX auto-render
             renderLatexInElement(mdContainer);
 
+            // Reset chat history and switch back to Notes view on new analysis
+            currentChatHistory = [];
+            switchRightTab('notes');
+            const chatMessagesContainer = document.getElementById('chatMessages');
+            if (chatMessagesContainer) {
+                chatMessagesContainer.innerHTML = `
+                    <div class="chat-message assistant">
+                        <div class="msg-avatar"><i data-feather="cpu"></i></div>
+                        <div class="msg-bubble">
+                            <p>I have ingested the full video transcript for <strong>${metadata.title || 'this video'}</strong>. Ask me anything about what was discussed, specific timestamps, or actionable advice!</p>
+                        </div>
+                    </div>
+                `;
+            }
+
             // Render Transcript list
             const transcriptContainer = document.getElementById('transcriptScroller');
             transcriptContainer.innerHTML = '';
@@ -602,6 +669,150 @@
                     feather.replace();
                 }
             });
+        }
+
+        // --- Interactive Temporary Chat System ---
+        let currentChatHistory = []; // Client-isolated temporary memory (0 leak between users)
+
+        function switchRightTab(tabName) {
+            const notesTabBtn = document.getElementById('tabNotesBtn');
+            const chatTabBtn = document.getElementById('tabChatBtn');
+            const notesView = document.getElementById('notesMarkdown');
+            const chatView = document.getElementById('chatContainer');
+
+            if (tabName === 'notes') {
+                notesTabBtn.classList.add('active');
+                chatTabBtn.classList.remove('active');
+                notesView.classList.add('active');
+                chatView.classList.remove('active');
+            } else if (tabName === 'chat') {
+                chatTabBtn.classList.add('active');
+                notesTabBtn.classList.remove('active');
+                chatView.classList.add('active');
+                notesView.classList.remove('active');
+                setTimeout(() => {
+                    const chatInput = document.getElementById('chatInput');
+                    if (chatInput) chatInput.focus();
+                    scrollChatToBottom();
+                }, 100);
+            }
+            feather.replace();
+        }
+
+        function scrollChatToBottom() {
+            const container = document.getElementById('chatMessages');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function appendChatMessage(role, content) {
+            const container = document.getElementById('chatMessages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `chat-message ${role}`;
+
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = 'msg-avatar';
+            avatarDiv.innerHTML = role === 'user' ? '<i data-feather="user"></i>' : '<i data-feather="cpu"></i>';
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'msg-bubble';
+
+            if (role === 'assistant') {
+                const parsed = marked.parse(content || '');
+                bubbleDiv.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(parsed) : parsed;
+                renderLatexInElement(bubbleDiv);
+            } else {
+                const p = document.createElement('p');
+                p.textContent = content;
+                bubbleDiv.appendChild(p);
+            }
+
+            msgDiv.appendChild(avatarDiv);
+            msgDiv.appendChild(bubbleDiv);
+            container.appendChild(msgDiv);
+            feather.replace();
+            scrollChatToBottom();
+        }
+
+        function sendQuickPrompt(promptText) {
+            const input = document.getElementById('chatInput');
+            if (input) {
+                input.value = promptText;
+                handleSendChatMessage();
+            }
+        }
+
+        async function handleSendChatMessage(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            if (!activeAnalysis) {
+                showToast("Please analyze a video first before chatting.", "info");
+                return;
+            }
+
+            const input = document.getElementById('chatInput');
+            const sendBtn = document.getElementById('chatSendBtn');
+            const query = input.value.trim();
+            if (!query) return;
+
+            // Display user message in UI
+            appendChatMessage('user', query);
+            input.value = '';
+            input.disabled = true;
+            if (sendBtn) sendBtn.disabled = true;
+
+            // Typing indicator bubble
+            const container = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'chat-message assistant typing-indicator';
+            typingDiv.id = 'typingBubble';
+            typingDiv.innerHTML = `
+                <div class="msg-avatar"><i data-feather="cpu"></i></div>
+                <div class="msg-bubble"><span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
+            `;
+            container.appendChild(typingDiv);
+            feather.replace();
+            scrollChatToBottom();
+
+            try {
+                const payload = {
+                    video_id: activeAnalysis.metadata.video_id,
+                    message: query,
+                    history: currentChatHistory,
+                    transcript_text: (activeAnalysis.transcript && activeAnalysis.transcript.text) ? activeAnalysis.transcript.text : ''
+                };
+
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await resp.json();
+                const typingBubble = document.getElementById('typingBubble');
+                if (typingBubble) typingBubble.remove();
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Chat query failed.');
+                }
+
+                // Add to temporary client memory
+                currentChatHistory.push({ role: 'user', content: query });
+                currentChatHistory.push({ role: 'assistant', content: data.reply });
+
+                // Render assistant response
+                appendChatMessage('assistant', data.reply);
+
+            } catch (err) {
+                console.error("Chat error:", err);
+                const typingBubble = document.getElementById('typingBubble');
+                if (typingBubble) typingBubble.remove();
+                appendChatMessage('assistant', `⚠️ ${err.message || 'Error communicating with assistant. Please try again.'}`);
+            } finally {
+                input.disabled = false;
+                if (sendBtn) sendBtn.disabled = false;
+                input.focus();
+            }
         }
 
         // Cryptographically secure lecture ID generator

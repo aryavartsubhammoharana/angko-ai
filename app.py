@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Modular service imports
 from redis_cache import get_cached_transcript, set_cached_transcript
 from transcripts import get_transcript_with_fallback
-from llm import generate_video_intelligence
+from llm import generate_video_intelligence, chat_with_transcript
 from pdf_generator import generate_pdf_report
 
 # Configure logging
@@ -267,6 +267,51 @@ def generate_pdf():
     except Exception as e:
         logging.error("Server-side PDF generation error: %s", e, exc_info=True)
         return jsonify({'error': f'Failed to generate PDF: {str(e)}'}), 500
+
+
+@app.route('/api/chat', methods=['POST'])
+def chat():
+    """Interactive conversational endpoint grounded in video transcript.
+    Stateless and user-isolated: uses client session memory to prevent memory bleed between users."""
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    if not rate_limiter.is_allowed(client_ip or 'unknown'):
+        return jsonify({'error': 'Rate limit exceeded. Please wait a moment.'}), 429
+
+    data = request.json or {}
+    video_id = data.get('video_id', '').strip()
+    message = data.get('message', '').strip()
+    history = data.get('history', [])
+
+    if not video_id:
+        return jsonify({'error': 'video_id is required.'}), 400
+    if not message:
+        return jsonify({'error': 'Message content cannot be empty.'}), 400
+
+    # 1. Fetch transcript from persistent cache (0 external API cost)
+    cached_transcript = get_cached_transcript(video_id)
+    transcript_text = cached_transcript.get('text', '') if cached_transcript else ''
+
+    if not transcript_text:
+        # Fallback to direct client-provided transcript if not in Redis
+        transcript_text = data.get('transcript_text', '').strip()
+
+    if not transcript_text:
+        return jsonify({'error': 'Transcript context not found for this video. Please analyze the video first.'}), 404
+
+    keys_dict = {
+        'nvidia': os.environ.get('NVIDIA_API_KEY', '').strip(),
+        'gemini': os.environ.get('GEMINI_API_KEY', '').strip(),
+        'groq': os.environ.get('GROQ_API_KEY', '').strip()
+    }
+
+    try:
+        reply = chat_with_transcript(transcript_text, message, history, keys_dict)
+        return jsonify({'reply': reply})
+    except Exception as e:
+        logging.error("Chat route error: %s", e, exc_info=True)
+        return jsonify({'error': f'Failed to generate response: {str(e)}'}), 500
 
 
 @app.route('/api/analyze', methods=['POST'])

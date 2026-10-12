@@ -1025,6 +1025,271 @@ main {
     gap: 8px;
 }
 
+/* Tab Switcher (Notes vs Chat) */
+.view-tabs {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    padding: 3px;
+    border-radius: var(--radius-pill);
+    gap: 4px;
+}
+
+.view-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.view-tab i {
+    width: 13px;
+    height: 13px;
+}
+
+.view-tab:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.view-tab.active {
+    color: #000000;
+    background: #ffffff;
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+.tab-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: #2563eb;
+    color: #ffffff;
+    letter-spacing: 0.5px;
+}
+.view-tab.active .tab-badge {
+    background: #000000;
+    color: #ffffff;
+}
+
+/* Content Views Toggling */
+.tab-content-view {
+    display: none;
+}
+.tab-content-view.active {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ==========================================================================
+   Interactive Chat Interface (100% Unscrollable Container, Internal Scrolling)
+   ========================================================================== */
+.chat-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 10px;
+}
+
+.chat-quick-prompts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.prompt-chip {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    color: #d4d4d8;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 0.72rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.prompt-chip:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: #ffffff;
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.chat-messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-right: 6px;
+}
+
+.chat-message {
+    display: flex;
+    gap: 10px;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.chat-message.user {
+    flex-direction: row-reverse;
+}
+
+.msg-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.chat-message.assistant .msg-avatar {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-color);
+    color: #ffffff;
+}
+.chat-message.user .msg-avatar {
+    background: #ffffff;
+    color: #000000;
+}
+.msg-avatar i {
+    width: 14px;
+    height: 14px;
+}
+
+.msg-bubble {
+    max-width: 82%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 0.83rem;
+    line-height: 1.5;
+}
+
+.chat-message.assistant .msg-bubble {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: #e4e4e7;
+    border-top-left-radius: 2px;
+}
+
+.chat-message.user .msg-bubble {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    border-top-right-radius: 2px;
+}
+
+.msg-bubble p {
+    margin: 0 0 6px 0;
+}
+.msg-bubble p:last-child {
+    margin-bottom: 0;
+}
+.msg-bubble ul, .msg-bubble ol {
+    margin: 4px 0 6px 0;
+    padding-left: 16px;
+}
+.msg-bubble li {
+    margin-bottom: 3px;
+}
+.msg-bubble code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.76rem;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.typing-indicator .dots span {
+    animation: blink 1.4s infinite both;
+    font-size: 1.4rem;
+    line-height: 0.5;
+}
+.typing-indicator .dots span:nth-child(2) { animation-delay: .2s; }
+.typing-indicator .dots span:nth-child(3) { animation-delay: .4s; }
+
+@keyframes blink {
+    0% { opacity: .2; }
+    20% { opacity: 1; }
+    100% { opacity: .2; }
+}
+
+/* Chat Input Bar */
+.chat-input-wrapper {
+    flex-shrink: 0;
+    padding-top: 6px;
+}
+
+.chat-input-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-pill);
+    padding: 4px 6px 4px 14px;
+    transition: var(--transition);
+}
+.chat-input-form:focus-within {
+    border-color: #ffffff;
+    box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.chat-input-form input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #ffffff;
+    font-size: 0.82rem;
+    font-family: inherit;
+}
+.chat-input-form input::placeholder {
+    color: var(--text-muted);
+}
+
+.chat-send-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: #000000;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+.chat-send-btn:hover {
+    background: #e4e4e7;
+    transform: scale(1.05);
+}
+.chat-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+.chat-send-btn i {
+    width: 14px;
+    height: 14px;
+}
+
 /* Rendered Markdown Notes - Tight High-Density Typography */
 .markdown-body {
     flex: 1;
