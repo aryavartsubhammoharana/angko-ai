@@ -229,28 +229,10 @@
 
                     <!-- View 2: Interactive Temporary Chat with Video -->
                     <div class="chat-body tab-content-view" id="chatContainer">
-                        <!-- Suggested Quick Questions -->
-                        <div class="chat-quick-prompts" id="chatQuickPrompts">
-                            <button class="prompt-chip" onclick="sendQuickPrompt('Give me the top 3 key takeaways of this video.')">
-                                <span>⚡ 3 Key Takeaways</span>
-                            </button>
-                            <button class="prompt-chip" onclick="sendQuickPrompt('What are the main misconceptions refuted in this video?')">
-                                <span>❌ Misconceptions</span>
-                            </button>
-                            <button class="prompt-chip" onclick="sendQuickPrompt('Create a step-by-step actionable roadmap based on this lecture.')">
-                                <span>🎯 Actionable Roadmap</span>
-                            </button>
-                        </div>
-
                         <!-- Chat Message Thread -->
                         <div class="chat-messages" id="chatMessages">
-                            <div class="chat-message assistant">
-                                <div class="msg-avatar">
-                                    <i data-feather="cpu"></i>
-                                </div>
-                                <div class="msg-bubble">
-                                    <p>I have ingested the full video transcript. Ask me anything about what was discussed, specific timestamps, or actionable advice!</p>
-                                </div>
+                            <div class="chat-empty-state" id="chatEmptyState">
+                                <span>Temporary Chats</span>
                             </div>
                         </div>
 
@@ -539,11 +521,8 @@
             const chatMessagesContainer = document.getElementById('chatMessages');
             if (chatMessagesContainer) {
                 chatMessagesContainer.innerHTML = `
-                    <div class="chat-message assistant">
-                        <div class="msg-avatar"><i data-feather="cpu"></i></div>
-                        <div class="msg-bubble">
-                            <p>I have ingested the full video transcript for <strong>${metadata.title || 'this video'}</strong>. Ask me anything about what was discussed, specific timestamps, or actionable advice!</p>
-                        </div>
+                    <div class="chat-empty-state" id="chatEmptyState">
+                        <span>Temporary Chats</span>
                     </div>
                 `;
             }
@@ -708,6 +687,13 @@
 
         function appendChatMessage(role, content) {
             const container = document.getElementById('chatMessages');
+            if (!container) return;
+
+            const emptyState = document.getElementById('chatEmptyState');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
             const msgDiv = document.createElement('div');
             msgDiv.className = `chat-message ${role}`;
 
@@ -733,14 +719,6 @@
             container.appendChild(msgDiv);
             feather.replace();
             scrollChatToBottom();
-        }
-
-        function sendQuickPrompt(promptText) {
-            const input = document.getElementById('chatInput');
-            if (input) {
-                input.value = promptText;
-                handleSendChatMessage();
-            }
         }
 
         async function handleSendChatMessage(e) {

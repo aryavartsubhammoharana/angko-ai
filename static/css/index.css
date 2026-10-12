@@ -979,10 +979,10 @@ main {
 
 /* AI Notes Card - Full Height Scrollable Panel with Tight Typography */
 .notes-card {
-    padding: 18px 22px;
+    padding: 12px 18px 14px 18px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     height: 100%;
     max-height: 100%;
     min-height: 0;
@@ -994,54 +994,68 @@ main {
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 10px;
+    padding-bottom: 6px;
+    flex-wrap: nowrap;
+    gap: 8px;
     flex-shrink: 0;
 }
 
 .notes-engine-tag {
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-color);
-    padding: 3px 8px;
+    padding: 2px 7px;
     border-radius: var(--radius-pill);
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
+    line-height: 1.3;
 }
 .notes-engine-tag i {
-    width: 12px;
-    height: 12px;
+    width: 11px;
+    height: 11px;
 }
 
 .notes-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
-/* Tab Switcher (Notes vs Chat) */
+.notes-actions .btn-sm {
+    padding: 3px 10px;
+    font-size: 0.70rem;
+    height: auto;
+    gap: 5px;
+    border-radius: var(--radius-pill);
+    line-height: 1.3;
+}
+.notes-actions .btn-sm i {
+    width: 12px;
+    height: 12px;
+}
+
+/* Tab Switcher (Notes vs Chat) - Compact Pill */
 .view-tabs {
     display: flex;
     align-items: center;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border-color);
-    padding: 3px;
+    padding: 2px;
     border-radius: var(--radius-pill);
-    gap: 4px;
+    gap: 2px;
 }
 
 .view-tab {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    font-size: 0.74rem;
+    gap: 5px;
+    padding: 3px 9px;
+    font-size: 0.70rem;
     font-weight: 600;
     color: var(--text-secondary);
     background: transparent;
@@ -1050,11 +1064,12 @@ main {
     cursor: pointer;
     transition: var(--transition);
     white-space: nowrap;
+    line-height: 1.2;
 }
 
 .view-tab i {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
 }
 
 .view-tab:hover {
@@ -1065,29 +1080,37 @@ main {
 .view-tab.active {
     color: #000000;
     background: #ffffff;
-    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 1px 6px rgba(255, 255, 255, 0.18);
 }
 
 .tab-badge {
-    font-size: 0.6rem;
+    font-size: 0.55rem;
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 4px;
+    padding: 0 4px;
+    line-height: 1.3;
+    border-radius: 3px;
     background: #2563eb;
     color: #ffffff;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }
 .view-tab.active .tab-badge {
     background: #000000;
     color: #ffffff;
 }
 
-/* Content Views Toggling */
+/* Content Views Toggling - Strict Isolation */
 .tab-content-view {
-    display: none;
+    display: none !important;
 }
 .tab-content-view.active {
-    display: flex;
+    display: flex !important;
+    flex-direction: column;
+}
+#notesMarkdown.tab-content-view.active {
+    display: block !important;
+}
+#chatContainer.tab-content-view.active {
+    display: flex !important;
     flex-direction: column;
 }
 
@@ -1097,35 +1120,22 @@ main {
 .chat-body {
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding-top: 10px;
+    gap: 8px;
+    padding-top: 4px;
 }
 
-.chat-quick-prompts {
+.chat-empty-state {
+    flex: 1;
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    flex-shrink: 0;
-}
-
-.prompt-chip {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-subtle);
-    color: #d4d4d8;
-    padding: 4px 10px;
-    border-radius: var(--radius-pill);
-    font-size: 0.72rem;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+    color: var(--text-muted);
+    font-size: 0.84rem;
     font-weight: 500;
-    cursor: pointer;
-    transition: var(--transition);
-}
-.prompt-chip:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: #ffffff;
-    color: #ffffff;
-    transform: translateY(-1px);
+    letter-spacing: 0.4px;
+    user-select: none;
+    text-align: center;
 }
 
 .chat-messages {
@@ -1134,7 +1144,7 @@ main {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     padding-right: 6px;
 }
 
