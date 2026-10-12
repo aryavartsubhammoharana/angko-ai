@@ -282,19 +282,17 @@ def analyze():
                 'error': 'Video is too long! We currently cannot generate notes for videos exceeding 20 minutes and 20 seconds.'
             }), 400
 
-        # Step 2: Fetch Transcript with Redis Cache & Multi-tier Fallback
-        # Checks Redis cache -> InnerTube/YouTubeTranscriptApi -> Supadata (persists to Redis immediately) -> Groq Whisper
+        # Step 2: Fetch Transcript via Supadata API (cached in Upstash Redis)
         try:
             transcript_data = get_transcript_with_fallback(
                 video_id=video_id,
                 canonical_url=safe_canonical_url,
-                supadata_key=user_supadata_key,
-                groq_key=user_groq_key
+                supadata_key=user_supadata_key
             )
         except Exception as transcript_err:
             logging.error("Transcript retrieval failed: %s", transcript_err)
             return jsonify({
-                'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or check server logs.'
+                'error': f'Failed to retrieve video transcript: {str(transcript_err)}'
             }), 400
 
         if not transcript_data or not transcript_data.get('text'):
