@@ -228,6 +228,31 @@ def get_youtube_metadata(url):
     except Exception as e:
         logging.warning("Error fetching exact duration: %s", e)
 
+    # 3. Supadata universal metadata fallback (if duration or title is missing)
+    supadata_key = os.environ.get('SUPADATA_API', '').strip()
+    if supadata_key and (metadata['duration'] is None or metadata['title'] == 'YouTube Video'):
+        try:
+            logging.info("Attempting Supadata universal metadata fallback for %s...", video_id)
+            meta_resp = requests.get(
+                f"https://api.supadata.ai/v1/metadata?url={quote_plus(safe_canonical_url)}",
+                headers={'x-api-key': supadata_key},
+                timeout=12
+            )
+            if meta_resp.status_code == 200:
+                s_data = meta_resp.json()
+                if isinstance(s_data, dict):
+                    if s_data.get('title') and metadata['title'] == 'YouTube Video':
+                        metadata['title'] = s_data['title']
+                    if s_data.get('author') and metadata['author'] == 'Unknown Creator':
+                        metadata['author'] = s_data['author']
+                    if s_data.get('duration') and metadata['duration'] is None:
+                        try:
+                            metadata['duration'] = float(s_data['duration'])
+                        except (ValueError, TypeError):
+                            pass
+        except Exception as e:
+            logging.warning("Supadata metadata fallback error: %s", e)
+
     return metadata
 
 
@@ -445,6 +470,79 @@ def fetch_youtube_transcript(video_id):
         'language_code': 'auto',
         'source': 'YouTube Subtitles'
     }
+
+
+def fetch_transcript_via_supadata(video_url, supadata_key, lang=None):
+    """Fetch transcript via Supadata AI universal transcript endpoint.
+    Handles both direct JSON segments and plain-text fallbacks."""
+    if not supadata_key:
+        return None
+
+    try:
+        logging.info("Attempting Supadata universal transcript API for %s...", video_url)
+        params = {'url': video_url, 'text': 'false'}
+        if lang:
+            params['lang'] = lang
+
+        headers = {'x-api-key': supadata_key}
+        resp = requests.get(
+            'https://api.supadata.ai/v1/transcript',
+            headers=headers,
+            params=params,
+            timeout=25
+        )
+
+        if resp.status_code != 200:
+            logging.warning("Supadata transcript API returned HTTP %s: %s", resp.status_code, resp.text)
+            return None
+
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+
+        content = data.get('content')
+        detected_lang = data.get('lang', 'auto')
+
+        normalized_segments = []
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict):
+                    txt = str(item.get('text', '') or '').strip()
+                    if not txt:
+                        continue
+                    # Supadata offset and duration are in milliseconds
+                    offset_ms = float(item.get('offset', 0.0) or 0.0)
+                    dur_ms = float(item.get('duration', 0.0) or 0.0)
+                    normalized_segments.append({
+                        'text': txt,
+                        'start': round(offset_ms / 1000.0, 2),
+                        'duration': round(dur_ms / 1000.0, 2)
+                    })
+        elif isinstance(content, str) and content.strip():
+            # If string returned, create a single baseline segment
+            normalized_segments.append({
+                'text': content.strip(),
+                'start': 0.0,
+                'duration': 0.0
+            })
+
+        if not normalized_segments:
+            return None
+
+        full_text = " ".join([seg['text'] for seg in normalized_segments if seg['text']])
+        if not full_text.strip():
+            return None
+
+        return {
+            'text': full_text,
+            'segments': normalized_segments,
+            'language': f"Supadata Transcript ({detected_lang})",
+            'language_code': detected_lang,
+            'source': 'Supadata AI'
+        }
+    except Exception as e:
+        logging.warning("Supadata transcript error: %s", e)
+        return None
 
 
 def transcribe_audio_fallback(url, groq_key):
@@ -850,6 +948,7 @@ def analyze():
     user_groq_key = os.environ.get('GROQ_API_KEY', '').strip()
     user_nvidia_key = os.environ.get('NVIDIA_API_KEY', '').strip()
     user_gemini_key = os.environ.get('GEMINI_API_KEY', '').strip()
+    user_supadata_key = os.environ.get('SUPADATA_API', '').strip()
 
     video_id = extract_video_id(url)
 
@@ -873,16 +972,27 @@ def analyze():
                 'error': 'Video is too long! We currently cannot generate notes for videos exceeding 20 minutes and 20 seconds.'
             }), 400
 
-        # Step 2: Fetch or Transcribe Audio
+        # Step 2: Fetch or Transcribe Audio (Multi-Tier Robust Fallback)
+        # Tier 1: YouTube Subtitles via InnerTube / YouTubeTranscriptApi
         transcript_data = fetch_youtube_transcript(video_id)
+
+        # Tier 2: Supadata AI universal transcript fallback
+        if not transcript_data and user_supadata_key:
+            logging.info("YouTube direct transcript failed. Attempting Supadata AI transcript fallback...")
+            try:
+                transcript_data = fetch_transcript_via_supadata(safe_canonical_url, user_supadata_key)
+            except Exception as supa_err:
+                logging.warning("Supadata transcript fallback error: %s", supa_err)
+
+        # Tier 3: Audio download + Groq Whisper transcription fallback
         if not transcript_data:
-            logging.info("YouTube Transcript API failed. Attempting audio download and Groq Whisper fallback...")
+            logging.info("Subtitles unavailable. Attempting audio download and Groq Whisper fallback...")
             try:
                 transcript_data = transcribe_audio_fallback(safe_canonical_url, user_groq_key)
             except Exception as whisper_err:
                 logging.error("Groq Whisper transcription fallback failed: %s", whisper_err, exc_info=True)
                 return jsonify({
-                    'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or configure a valid Groq API key for audio fallback.'
+                    'error': 'This video does not have subtitles available on YouTube. Please try a video with subtitles/captions enabled or configure a valid Groq/Supadata API key for audio fallback.'
                 }), 400
 
         # Calculate duration from transcript if missing from metadata
