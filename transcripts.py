@@ -38,7 +38,13 @@ def find_ffmpeg_binaries():
 
 
 def extract_transcript_via_ytdlp(video_id: str):
-    """Fallback subtitle extractor using yt-dlp InnerTube client spoofing (bypasses datacenter IP blocks)."""
+    """Fallback subtitle extractor using yt-dlp with client spoofing.
+    Safely bypassed in cloud serverless environments (like Vercel) where YouTube blocks datacenter IPs."""
+    # On serverless hosts (Vercel, AWS Lambda), YouTube blocks datacenter IPs with "Sign in to confirm you're not a bot"
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        logging.info("Serverless environment detected (Vercel/Lambda). Skipping local yt-dlp to avoid datacenter bot block.")
+        return None
+
     try:
         canonical_url = f"https://www.youtube.com/watch?v={video_id}"
         ydl_opts = {
@@ -47,7 +53,7 @@ def extract_transcript_via_ytdlp(video_id: str):
             'writeautomaticsub': True,
             'quiet': True,
             'no_warnings': True,
-            'extractor_args': {'youtube': ['client=ANDROID,IOS,WEB']}
+            'extractor_args': {'youtube': ['client=ANDROID,IOS']}
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(canonical_url, download=False)
@@ -120,18 +126,13 @@ def extract_transcript_via_ytdlp(video_id: str):
                 'source': 'YouTube Subtitles (InnerTube)'
             }
     except Exception as e:
-        logging.warning("yt-dlp subtitle extraction fallback error: %s", e)
+        logging.warning("yt-dlp subtitle extraction fallback failed or blocked by YouTube: %s", e)
         return None
 
 
 def fetch_youtube_transcript(video_id: str):
-    """Attempt to fetch transcript from YouTube directly using multi-tier fallback."""
-    # Priority 1: InnerTube client spoofing via yt-dlp (fast, bypasses datacenter IP blocks)
-    logging.info("Attempting InnerTube subtitle extraction for %s...", video_id)
-    ytdlp_result = extract_transcript_via_ytdlp(video_id)
-    if ytdlp_result and ytdlp_result.get('text'):
-        return ytdlp_result
-
+    """Attempt to fetch transcript from YouTube directly using multi-tier fallback.
+    Tries YouTubeTranscriptApi first, then yt-dlp if available."""
     raw_data = None
     source_language = 'YouTube Subtitles'
 
@@ -333,6 +334,10 @@ def transcribe_audio_fallback(url: str, groq_key: str):
             "This video does not have subtitles/transcripts available on YouTube. "
             "Please configure a valid Groq API Key in .env to enable audio transcription fallback."
         )
+
+    # On serverless hosts without external proxies, yt-dlp audio download is blocked by YouTube datacenter protection
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        raise RuntimeError("Audio extraction directly on serverless datacenter IP is restricted by YouTube.")
 
     # Disk space pre-check (require at least 100 MB free)
     temp_dir = tempfile.gettempdir()
