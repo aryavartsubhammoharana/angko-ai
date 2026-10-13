@@ -233,6 +233,9 @@ def get_youtube_metadata(url):
 @app.route('/')
 @app.route('/home')
 @app.route('/home/<lecture_id>')
+@app.route('/api/index')
+@app.route('/api/index.py')
+@app.route('/api')
 def home(lecture_id=None):
     return render_template('index.html')
 
@@ -243,6 +246,7 @@ def about():
 
 
 @app.route('/api/generate-pdf', methods=['POST'])
+@app.route('/generate-pdf', methods=['POST'])
 def generate_pdf():
     """Server-side PDF generation using Python ReportLab.
     Eliminates HTML-to-canvas rendering bugs, broken tables, and awkward page splits."""
@@ -273,6 +277,7 @@ def generate_pdf():
 
 
 @app.route('/api/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def chat():
     """Interactive conversational endpoint grounded in video transcript.
     Stateless and user-isolated: uses client session memory to prevent memory bleed between users."""
@@ -318,6 +323,7 @@ def chat():
 
 
 @app.route('/api/analyze', methods=['POST'])
+@app.route('/analyze', methods=['POST'])
 def analyze():
     # Rate limiting: maximum 10 requests per minute per IP
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
