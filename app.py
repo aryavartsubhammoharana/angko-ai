@@ -233,9 +233,6 @@ def get_youtube_metadata(url):
 @app.route('/')
 @app.route('/home')
 @app.route('/home/<lecture_id>')
-@app.route('/api/index')
-@app.route('/api/index.py')
-@app.route('/api')
 def home(lecture_id=None):
     return render_template('index.html')
 
@@ -431,6 +428,23 @@ def analyze():
     except Exception as e:
         logging.error("Analysis route error: %s", e, exc_info=True)
         return jsonify({'error': f'An unexpected error occurred while analyzing the lecture: {str(e)}'}), 500
+
+
+# Fallback Vercel Entrypoint Dispatcher (handles GET and POST if Vercel rewrote URL to /api/index)
+@app.route('/api/index', methods=['GET', 'POST'])
+@app.route('/api/index.py', methods=['GET', 'POST'])
+@app.route('/api', methods=['GET', 'POST'])
+def vercel_entrypoint():
+    if request.method == 'POST':
+        data = request.get_json(silent=True) or {}
+        if 'url' in data:
+            return analyze()
+        elif 'message' in data and 'video_id' in data:
+            return chat()
+        elif 'markdown' in data:
+            return generate_pdf()
+        return jsonify({'error': 'Unrecognized request payload'}), 400
+    return render_template('index.html')
 
 
 if __name__ == '__main__':
