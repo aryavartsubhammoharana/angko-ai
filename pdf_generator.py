@@ -47,6 +47,74 @@ class NumberedCanvas(canvas.Canvas):
         self.restoreState()
 
 
+def sanitize_reportlab_xml(text: str) -> str:
+    """Validates and enforces strict XML tag nesting for ReportLab Paragraphs.
+    Fixes crossed tags (e.g. <b>...<i>...</b></i> -> <b>...<i>...</i></b>)
+    and closes any dangling unclosed tags."""
+    if not text:
+        return ""
+    
+    tag_pattern = re.compile(r'<\s*(/)?\s*([a-zA-Z]+)([^>]*)>')
+    stack = []
+    output = []
+    last_end = 0
+
+    for match in tag_pattern.finditer(text):
+        output.append(text[last_end:match.start()])
+        last_end = match.end()
+
+        is_closing = bool(match.group(1))
+        tag_name = match.group(2).lower()
+        tag_attrs = match.group(3)
+
+        # Only allow ReportLab supported formatting tags
+        if tag_name not in ('b', 'i', 'u', 'font', 'super', 'sub'):
+            continue
+
+        if not is_closing:
+            stack.append(tag_name)
+            output.append(f'<{tag_name}{tag_attrs}>')
+        else:
+            if tag_name in stack:
+                # Pop and close any nested tags above it to preserve strict LIFO order
+                while stack and stack[-1] != tag_name:
+                    unwound = stack.pop()
+                    output.append(f'</{unwound}>')
+                if stack and stack[-1] == tag_name:
+                    stack.pop()
+                    output.append(f'</{tag_name}>')
+            # If tag_name not in stack, silently discard the orphan closing tag
+
+    output.append(text[last_end:])
+
+    # Close any unclosed tags at the end of the line
+    while stack:
+        unwound = stack.pop()
+        output.append(f'</{unwound}>')
+
+    return ''.join(output)
+
+
+def create_safe_paragraph(html_text: str, style: ParagraphStyle) -> Paragraph:
+    """Creates a ReportLab Paragraph with 100% crash protection.
+    Balances improperly nested/overlapping tags (e.g. <b>...<i>...</b></i>).
+    If any XML parsing error still occurs, falls back gracefully to sanitized plain text."""
+    if not html_text:
+        return Paragraph("", style)
+    
+    sanitized = sanitize_reportlab_xml(html_text)
+    try:
+        return Paragraph(sanitized, style)
+    except Exception:
+        # Fallback: strip all XML tags, escape plain text
+        plain_text = re.sub(r'<[^>]+>', '', html_text)
+        clean_plain = plain_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        try:
+            return Paragraph(clean_plain, style)
+        except Exception:
+            return Paragraph("", style)
+
+
 def clean_markdown_inline(text: str) -> str:
     """Escape XML special characters and convert markdown bold/italic/code to ReportLab tags.
     Cleans up redundant leading spaces and dashes."""
@@ -71,13 +139,13 @@ def clean_markdown_inline(text: str) -> str:
     # Inline Code: `text`
     text = re.sub(r'`(.+?)`', r'<font name="Courier" color="#0f172a" size="8"><b>\1</b></font>', text)
 
-    return text
+    return sanitize_reportlab_xml(text)
 
 
 def build_bullet_table(bullet_symbol: str, content_html: str, content_style: ParagraphStyle, symbol_style: ParagraphStyle, col_width_symbol=18, total_width=540) -> Table:
     """Renders a bullet or numbered point using an aligned 2-column table to guarantee ZERO unwanted space after the dot/symbol."""
-    sym_para = Paragraph(bullet_symbol, symbol_style)
-    content_para = Paragraph(content_html, content_style)
+    sym_para = create_safe_paragraph(bullet_symbol, symbol_style)
+    content_para = create_safe_paragraph(content_html, content_style)
     
     t = Table([[sym_para, content_para]], colWidths=[col_width_symbol, total_width - col_width_symbol])
     t.setStyle(TableStyle([
@@ -245,9 +313,9 @@ def generate_pdf_report(metadata: dict, markdown_text: str, engine_name: str = "
         dur_str = str(duration_val)
 
     header_elements = [
-        Paragraph("ANGKOR AI &bull; EXECUTIVE INTELLIGENCE REPORT", brand_style),
-        Paragraph(clean_markdown_inline(title_text), doc_title_style),
-        Paragraph(
+        create_safe_paragraph("ANGKOR AI &bull; EXECUTIVE INTELLIGENCE REPORT", brand_style),
+        create_safe_paragraph(clean_markdown_inline(title_text), doc_title_style),
+        create_safe_paragraph(
             f"<b>Speaker/Channel:</b> {clean_markdown_inline(author_text)} &nbsp;&bull;&nbsp; "
             f"<b>Duration:</b> {dur_str} &nbsp;&bull;&nbsp; "
             f"<b>Engine:</b> {engine_name}",
@@ -273,7 +341,7 @@ def generate_pdf_report(metadata: dict, markdown_text: str, engine_name: str = "
             row_cells = []
             style_to_use = table_header_style if row_idx == 0 else table_cell_style
             for c in padded_row:
-                row_cells.append(Paragraph(clean_markdown_inline(c), style_to_use))
+                row_cells.append(create_safe_paragraph(clean_markdown_inline(c), style_to_use))
             formatted_data.append(row_cells)
 
         # Total printable width = 540 pt
@@ -356,13 +424,13 @@ def generate_pdf_report(metadata: dict, markdown_text: str, engine_name: str = "
 
         # Headings
         if line.startswith('# '):
-            story.append(Paragraph(clean_markdown_inline(line[2:]), h1_style))
+            story.append(create_safe_paragraph(clean_markdown_inline(line[2:]), h1_style))
         elif line.startswith('## '):
-            story.append(Paragraph(clean_markdown_inline(line[3:]), h2_style))
+            story.append(create_safe_paragraph(clean_markdown_inline(line[3:]), h2_style))
         elif line.startswith('### '):
-            story.append(Paragraph(clean_markdown_inline(line[4:]), h3_style))
+            story.append(create_safe_paragraph(clean_markdown_inline(line[4:]), h3_style))
         elif line.startswith('#### '):
-            story.append(Paragraph(clean_markdown_inline(line[5:]), h3_style))
+            story.append(create_safe_paragraph(clean_markdown_inline(line[5:]), h3_style))
         
         # Bullet list: - or *
         elif line.startswith('- ') or line.startswith('* '):
@@ -379,16 +447,16 @@ def generate_pdf_report(metadata: dict, markdown_text: str, engine_name: str = "
                 # Fixed symbol column (16pt) so numbers don't push text far right
                 story.append(build_bullet_table(prefix, content, list_text_style, symbol_style, col_width_symbol=16))
             else:
-                story.append(Paragraph(clean_markdown_inline(line), body_style))
+                story.append(create_safe_paragraph(clean_markdown_inline(line), body_style))
         
         # Blockquote: > text
         elif line.startswith('>'):
             cleaned_quote = clean_markdown_inline(line.lstrip('>').strip())
-            story.append(Paragraph(cleaned_quote, blockquote_style))
+            story.append(create_safe_paragraph(cleaned_quote, blockquote_style))
         
         # Standard Paragraph
         else:
-            story.append(Paragraph(clean_markdown_inline(line), body_style))
+            story.append(create_safe_paragraph(clean_markdown_inline(line), body_style))
 
         i += 1
 

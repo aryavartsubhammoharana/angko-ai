@@ -583,16 +583,38 @@
 
         // Download analysis as styled PDF document
         function downloadPDF() {
+            // Robust activeAnalysis recovery if opened from closed tab/history
+            if (!activeAnalysis && lectureHistory.length > 0) {
+                const pathParts = window.location.pathname.split('/');
+                if (pathParts.length >= 3 && pathParts[1] === 'home') {
+                    const currentId = pathParts[2];
+                    const matched = lectureHistory.find(item => item.lecture_id === currentId);
+                    if (matched) activeAnalysis = matched;
+                }
+                if (!activeAnalysis) activeAnalysis = lectureHistory[0];
+            }
+
             if (!activeAnalysis) {
                 showToast("No analysis available to download.", "error");
                 return;
             }
 
-            const metadata = activeAnalysis.metadata;
+            const metadata = activeAnalysis.metadata || {
+                title: document.getElementById('videoTitle')?.textContent || 'Executive Analysis Report',
+                author: document.getElementById('videoAuthor')?.textContent || 'Unknown Creator',
+                duration: null
+            };
+
             const mdContainer = document.getElementById('notesMarkdown');
             if (!mdContainer || !mdContainer.innerHTML.trim()) {
                 showToast("Notes are still generating or empty.", "error");
                 return;
+            }
+
+            let markdownContent = activeAnalysis.analysis || '';
+            if (!markdownContent.trim()) {
+                // If markdown string was somehow lost in stored history, extract text from container
+                markdownContent = mdContainer.innerText || mdContainer.textContent || '';
             }
 
             const downloadBtn = document.getElementById('downloadPdfBtn');
@@ -612,7 +634,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     metadata: metadata,
-                    markdown: activeAnalysis.analysis || '',
+                    markdown: markdownContent,
                     engine: activeAnalysis.engine || 'Angkor Executive AI'
                 })
             })
