@@ -166,10 +166,13 @@ def get_youtube_metadata(url):
         return metadata
     safe_canonical_url = f"https://www.youtube.com/watch?v={video_id}"
 
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+    timeout_sec = 4 if is_serverless else 10
+
     try:
         # 1. Get basic metadata from oEmbed
         encoded_url = quote_plus(safe_canonical_url)
-        response = requests.get(f"https://www.youtube.com/oembed?url={encoded_url}&format=json", timeout=10)
+        response = requests.get(f"https://www.youtube.com/oembed?url={encoded_url}&format=json", timeout=timeout_sec)
         if response.status_code == 200:
             data = response.json()
             metadata['title'] = data.get('title', 'YouTube Video')
@@ -184,7 +187,7 @@ def get_youtube_metadata(url):
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9'
         }
-        html_response = requests.get(safe_canonical_url, headers=headers, timeout=10)
+        html_response = requests.get(safe_canonical_url, headers=headers, timeout=timeout_sec)
         if html_response.status_code == 200:
             duration_match = re.search(r'<meta itemprop="duration" content="([^"]+)">', html_response.text)
             if duration_match:
@@ -199,14 +202,14 @@ def get_youtube_metadata(url):
         logging.warning("Error fetching exact duration: %s", e)
 
     # 3. Supadata universal metadata fallback (if duration or title is missing)
-    supadata_key = os.environ.get('SUPADATA_API', '').strip()
+    supadata_key = (os.environ.get('SUPADATA_API', '') or os.environ.get('SUPADATA_API_KEY', '')).strip()
     if supadata_key and (metadata['duration'] is None or metadata['title'] == 'YouTube Video'):
         try:
             logging.info("Attempting Supadata universal metadata fallback for %s...", video_id)
             meta_resp = requests.get(
                 f"https://api.supadata.ai/v1/metadata?url={quote_plus(safe_canonical_url)}",
                 headers={'x-api-key': supadata_key},
-                timeout=12
+                timeout=8 if is_serverless else 12
             )
             if meta_resp.status_code == 200:
                 s_data = meta_resp.json()
@@ -342,7 +345,7 @@ def analyze():
     user_groq_key = os.environ.get('GROQ_API_KEY', '').strip()
     user_nvidia_key = os.environ.get('NVIDIA_API_KEY', '').strip()
     user_gemini_key = os.environ.get('GEMINI_API_KEY', '').strip()
-    user_supadata_key = os.environ.get('SUPADATA_API', '').strip()
+    user_supadata_key = (os.environ.get('SUPADATA_API', '') or os.environ.get('SUPADATA_API_KEY', '')).strip()
     sarvam_model = os.environ.get('SARVAM_MODEL', 'sarvam-105b-conversations')
 
     try:

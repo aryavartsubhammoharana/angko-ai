@@ -271,7 +271,7 @@ def fetch_transcript_via_supadata(video_url: str, supadata_key: str, lang=None):
             'https://api.supadata.ai/v1/transcript',
             headers=headers,
             params=params,
-            timeout=25
+            timeout=15
         )
 
         if resp.status_code != 200:
@@ -444,11 +444,16 @@ def transcribe_audio_fallback(url: str, groq_key: str):
 
 def get_transcript_with_fallback(video_id: str, canonical_url: str, supadata_key: str = "", groq_key: str = ""):
     """Master transcript orchestrator with Redis persistent caching.
-    1. Checks Upstash Redis / local memory cache first (0 API credits spent, instant).
-    2. Tier 1: YouTube subtitles via InnerTube / YouTubeTranscriptApi (100% Free).
-    3. Tier 2: Audio download + Groq Whisper V3 fallback (Fast & Free).
-    4. Tier 3: Supadata AI universal transcript endpoint (Final fallback to preserve credits).
-       -> As soon as any transcript is fetched, it is immediately committed to Redis.
+    Smart environment routing:
+    - Serverless (Vercel):
+      1. Upstash Redis cache (instant, 0 API credits).
+      2. If Supadata key present: Call Supadata AI directly (bypasses YouTube datacenter IP ban without wasting timeout).
+      3. Fallback to fetch_youtube_transcript.
+    - Local / Non-serverless:
+      1. Upstash Redis cache (instant).
+      2. Tier 1: YouTube subtitles via InnerTube / YouTubeTranscriptApi (100% Free).
+      3. Tier 2: Groq Whisper V3 audio download fallback (Free).
+      4. Tier 3: Supadata AI universal transcript endpoint (Final fallback to preserve credits).
     """
     # 1. Check Redis Cache
     cached = get_cached_transcript(video_id)
@@ -458,6 +463,19 @@ def get_transcript_with_fallback(video_id: str, canonical_url: str, supadata_key
         return cached
 
     transcript_data = None
+    is_serverless = bool(os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+    # On Vercel / serverless: route directly to Supadata if key available
+    # This prevents the 5-7 second doomed YouTubeTranscriptApi delay on blocked datacenter IPs
+    if is_serverless and supadata_key:
+        logging.info("Serverless environment (Vercel) detected. Routing directly to Supadata AI to bypass YouTube datacenter IP ban...")
+        try:
+            transcript_data = fetch_transcript_via_supadata(canonical_url, supadata_key)
+            if transcript_data and transcript_data.get('text'):
+                set_cached_transcript(video_id, transcript_data)
+                return transcript_data
+        except Exception as supa_err:
+            logging.warning("Serverless Supadata primary attempt failed: %s", supa_err)
 
     # 2. Tier 1: YouTube direct subtitles (Free)
     try:
@@ -465,8 +483,8 @@ def get_transcript_with_fallback(video_id: str, canonical_url: str, supadata_key
     except Exception as e:
         logging.warning("Tier 1 direct transcript failed: %s", e)
 
-    # 3. Tier 2 (Step 3): Groq Whisper V3 audio download fallback (Free)
-    if not transcript_data and groq_key:
+    # 3. Tier 2: Groq Whisper V3 audio download fallback (Free, skipped on serverless due to IP block & timeout)
+    if not transcript_data and groq_key and not is_serverless:
         logging.info("YouTube direct subtitles unavailable. Attempting Groq Whisper audio fallback...")
         try:
             transcript_data = transcribe_audio_fallback(canonical_url, groq_key)
@@ -475,13 +493,12 @@ def get_transcript_with_fallback(video_id: str, canonical_url: str, supadata_key
         except Exception as whisper_err:
             logging.warning("Groq Whisper transcription fallback failed: %s", whisper_err)
 
-    # 4. Tier 3 (Step 4): Supadata AI fallback (Ultimate final fallback - protects credits)
+    # 4. Tier 3: Supadata AI fallback (if not already tried above)
     if not transcript_data and supadata_key:
-        logging.info("Attempting final fallback via Supadata AI transcript API for %s...", video_id)
+        logging.info("Attempting Supadata AI transcript API fallback for %s...", video_id)
         try:
             transcript_data = fetch_transcript_via_supadata(canonical_url, supadata_key)
             if transcript_data and transcript_data.get('text'):
-                # IMMEDIATELY persist to Redis so future requests don't burn credits
                 set_cached_transcript(video_id, transcript_data)
         except Exception as supa_err:
             logging.warning("Supadata transcript fallback error: %s", supa_err)
