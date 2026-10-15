@@ -25,7 +25,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
     <!-- html2pdf for Client-Side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=2.1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=2.5">
 </head>
 <body>
     <div class="bg-grid"></div>
@@ -80,6 +80,9 @@
     </header>
 
     <div class="app-container">
+        <!-- Sidebar Backdrop for Mobile Off-Canvas Drawer -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
+
         <!-- Sidebar: Video Lecture History -->
         <aside id="sidebarDrawer">
             <div class="sidebar-header">
@@ -929,6 +932,9 @@
         }
 
         function loadHistoryItem(item, pushUrl = true) {
+            if (window.innerWidth <= 960) {
+                toggleSidebar(false);
+            }
             if (pushUrl) {
                 window.history.pushState({}, '', '/home/' + (item.lecture_id || ''));
             }
@@ -964,20 +970,47 @@
             showToast("Lecture removed from history.", "info");
         }
 
-        // Sidebar Toggle Logic
-        function toggleSidebar() {
+        // Sidebar Toggle Logic (Supports Desktop Collapse & Mobile Off-Canvas Drawer)
+        function toggleSidebar(forceState = null) {
+            const isMobile = window.innerWidth <= 960;
             const container = document.querySelector('.app-container');
-            const isCollapsed = container.classList.toggle('collapsed-sidebar');
-            localStorage.setItem('veda_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+            const backdrop = document.getElementById('sidebarBackdrop');
+
+            if (isMobile) {
+                const willOpen = forceState !== null ? forceState : !container.classList.contains('mobile-sidebar-open');
+                if (willOpen) {
+                    container.classList.add('mobile-sidebar-open');
+                    if (backdrop) backdrop.classList.add('active');
+                } else {
+                    container.classList.remove('mobile-sidebar-open');
+                    if (backdrop) backdrop.classList.remove('active');
+                }
+            } else {
+                const isCollapsed = forceState !== null ? !forceState : container.classList.toggle('collapsed-sidebar');
+                localStorage.setItem('veda_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+            }
         }
 
         // Initialize sidebar state on load
-        if (localStorage.getItem('veda_sidebar_collapsed') === 'true') {
+        if (window.innerWidth > 960 && localStorage.getItem('veda_sidebar_collapsed') === 'true') {
             document.querySelector('.app-container').classList.add('collapsed-sidebar');
         }
 
+        // Handle viewport resize to reset mobile drawer
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 960) {
+                const container = document.querySelector('.app-container');
+                const backdrop = document.getElementById('sidebarBackdrop');
+                container.classList.remove('mobile-sidebar-open');
+                if (backdrop) backdrop.classList.remove('active');
+            }
+        });
+
         // Reset workspace for a new lecture
         function startNewLecture(pushUrl = true) {
+            if (window.innerWidth <= 960) {
+                toggleSidebar(false);
+            }
             if (pushUrl) {
                 window.history.pushState({}, '', '/home/new');
             }

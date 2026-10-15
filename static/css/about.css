@@ -355,3 +355,64 @@ p {
     text-decoration: underline;
     font-weight: 500;
 }
+
+/* ==========================================================================
+   Responsive Adaptations for About Page
+   ========================================================================== */
+
+@media (max-width: 768px) {
+    .navbar-header {
+        padding: 0 14px;
+        height: 52px;
+        min-height: 52px;
+    }
+    .navbar-left {
+        gap: 8px;
+    }
+    .brand-logo {
+        font-size: 0.95rem;
+    }
+    .brand-logo .project-logo {
+        height: 22px;
+        width: 22px;
+    }
+    .nav-brand-divider,
+    .nav-brand-emblem-link,
+    .nav-actions {
+        display: none !important;
+    }
+    .nav-link {
+        padding: 5px 10px;
+        font-size: 0.78rem;
+    }
+    .container {
+        margin: 20px 14px;
+        padding: 24px 16px;
+    }
+    h1 {
+        font-size: 1.55rem;
+        gap: 8px;
+    }
+    p {
+        font-size: 0.88rem;
+        line-height: 1.6;
+    }
+    .tech-stack {
+        gap: 6px;
+    }
+    .tech-badge {
+        font-size: 0.7rem;
+        padding: 3px 10px;
+    }
+    .back-link {
+        width: 100%;
+        justify-content: center;
+        padding: 10px 16px;
+    }
+    .footer-bar {
+        padding: 0 14px;
+    }
+    .footer-bar p {
+        font-size: 0.68rem;
+    }
+}
