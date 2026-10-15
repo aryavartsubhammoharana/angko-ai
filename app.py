@@ -69,7 +69,7 @@ def set_security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
         "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; "
         "img-src 'self' data: blob: https://i.ytimg.com https://*.ytimg.com https://images.unsplash.com; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
         "frame-ancestors 'none';"
     )
     return response

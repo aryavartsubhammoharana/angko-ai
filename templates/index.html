@@ -25,7 +25,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
     <!-- html2pdf for Client-Side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=2.5">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=3.2">
 </head>
 <body>
     <div class="bg-grid"></div>
@@ -54,9 +54,9 @@
                     <div class="input-group">
                         <i data-feather="youtube"></i>
                         <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here..." required>
-                        <button type="submit" class="btn btn-primary btn-sm">
-                            <i data-feather="zap"></i>
-                            <span>Analyze</span>
+                        <button type="submit" class="btn btn-primary btn-sm btn-icon-expand" title="Analyze">
+                            <i data-feather="arrow-up"></i>
+                            <span class="btn-expand-text">Analyze</span>
                         </button>
                     </div>
                 </form>
@@ -79,10 +79,10 @@
         </div>
     </header>
 
-    <div class="app-container">
-        <!-- Sidebar Backdrop for Mobile Off-Canvas Drawer -->
-        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
+    <!-- Sidebar Backdrop for Mobile Off-Canvas Drawer (Outside grid container) -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
 
+    <div class="app-container">
         <!-- Sidebar: Video Lecture History -->
         <aside id="sidebarDrawer">
             <div class="sidebar-header">
@@ -119,9 +119,9 @@
                         <div class="input-group">
                             <i data-feather="youtube"></i>
                             <input type="text" class="search-input" name="youtubeUrl" placeholder="Paste YouTube link here... (e.g. https://www.youtube.com/watch?v=...)" required autofocus>
-                            <button type="submit" class="btn btn-primary" id="heroSubmitBtn">
-                                <i data-feather="zap"></i>
-                                <span>Analyze Video</span>
+                            <button type="submit" class="btn btn-primary btn-icon-expand" id="heroSubmitBtn" title="Analyze Video">
+                                <i data-feather="arrow-up"></i>
+                                <span class="btn-expand-text">Analyze Video</span>
                             </button>
                         </div>
                     </form>
@@ -164,7 +164,7 @@
             </section>
 
             <!-- Results container -->
-            <section class="results-container" id="resultsContainer">
+            <section class="results-container" id="resultsContainer" style="display: none;">
                 <!-- Left Column: Video Player Card & Subtitle list -->
                 <div class="video-column">
                     <!-- Video Card -->
