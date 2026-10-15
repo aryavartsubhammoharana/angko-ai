@@ -25,7 +25,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
     <!-- html2pdf for Client-Side PDF Generation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=3.2">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}?v=3.3">
 </head>
 <body>
     <div class="bg-grid"></div>
@@ -87,7 +87,10 @@
         <aside id="sidebarDrawer">
             <div class="sidebar-header">
                 <div class="sidebar-title">
-                    <i data-feather="clock"></i>
+                    <button class="sidebar-close-btn" id="sidebarCloseBtn" onclick="toggleSidebar(false)" title="Close Sidebar" aria-label="Close Sidebar">
+                        <i data-feather="x"></i>
+                    </button>
+                    <i data-feather="clock" class="sidebar-clock-icon"></i>
                     <span>Lecture History</span>
                 </div>
                 <button class="icon-btn" onclick="startNewLecture()" title="New Lecture" style="padding: 4px 8px; font-size: 11px; gap: 4px;">
@@ -995,6 +998,30 @@
         if (window.innerWidth > 960 && localStorage.getItem('veda_sidebar_collapsed') === 'true') {
             document.querySelector('.app-container').classList.add('collapsed-sidebar');
         }
+
+        // Close sidebar on mobile when tapping outside (backdrop or anywhere outside drawer)
+        const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
+        if (sidebarBackdropEl) {
+            const handleBackdropClose = (e) => {
+                e.preventDefault();
+                toggleSidebar(false);
+            };
+            sidebarBackdropEl.addEventListener('click', handleBackdropClose);
+            sidebarBackdropEl.addEventListener('touchend', handleBackdropClose, { passive: false });
+        }
+
+        document.addEventListener('pointerdown', (e) => {
+            if (window.innerWidth <= 960) {
+                const container = document.querySelector('.app-container');
+                const sidebar = document.getElementById('sidebarDrawer');
+                const toggleBtn = document.getElementById('sidebarToggleBtn');
+                if (container && container.classList.contains('mobile-sidebar-open')) {
+                    if (sidebar && !sidebar.contains(e.target) && (!toggleBtn || !toggleBtn.contains(e.target))) {
+                        toggleSidebar(false);
+                    }
+                }
+            }
+        });
 
         // Handle viewport resize to reset mobile drawer
         window.addEventListener('resize', () => {

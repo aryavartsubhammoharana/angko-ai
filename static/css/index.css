@@ -391,6 +391,35 @@ aside {
     width: 13px;
     height: 13px;
 }
+.sidebar-close-btn {
+    display: none;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border-color);
+    color: #ffffff;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+    margin-right: 4px;
+    transition: var(--transition);
+}
+.sidebar-close-btn:hover,
+.sidebar-close-btn:active {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+}
+.sidebar-close-btn i,
+.sidebar-close-btn svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2.5;
+    display: block;
+    margin: 0;
+}
 
 .history-list {
     flex: 1;
@@ -1627,7 +1656,7 @@ main {
         display: none !important;
     }
 
-    /* Fix stacking context so backdrop blurs the page, NOT the sidebar */
+    /* Fix stacking context so backdrop blurs the page and receives clicks, NOT trapped behind app-container */
     .app-container {
         display: flex !important;
         flex-direction: column !important;
@@ -1636,19 +1665,23 @@ main {
         grid-template-columns: none !important;
         overflow: hidden !important;
         width: 100% !important;
-        z-index: 1000 !important;
+        position: static !important;
+        z-index: auto !important;
     }
 
-    /* Sidebar Drawer Backdrop (Behind aside, blurs only the background page) */
+    /* Sidebar Drawer Backdrop (In front of page, behind aside, handles touch-to-close) */
     .sidebar-backdrop {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.75);
         backdrop-filter: blur(5px);
         -webkit-backdrop-filter: blur(5px);
-        z-index: 998 !important;
+        z-index: 1050 !important;
         opacity: 0;
         pointer-events: none;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
         transition: opacity 0.25s ease;
     }
     .sidebar-backdrop.active {
@@ -1665,7 +1698,7 @@ main {
         width: min(85vw, 300px) !important;
         height: 100% !important;
         max-height: 100% !important;
-        z-index: 1001 !important;
+        z-index: 1060 !important;
         transform: translateX(-100%) !important;
         transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s ease !important;
         background: #090a0f !important;
@@ -1682,6 +1715,14 @@ main {
         opacity: 1 !important;
         pointer-events: auto !important;
         box-shadow: 10px 0 40px rgba(0, 0, 0, 0.95) !important;
+    }
+
+    /* Mobile Sidebar Header: Replace clock icon with tap-friendly Cross (X) close button */
+    .sidebar-clock-icon {
+        display: none !important;
+    }
+    .sidebar-close-btn {
+        display: inline-flex !important;
     }
 
     /* Main Workspace (Unscrollable Frame) */
